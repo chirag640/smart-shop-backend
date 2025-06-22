@@ -25,46 +25,74 @@ const createItem = async (req, res) => {
       tags, supplier, notes
     } = req.body;
 
-    // Validate required fields
-    if (!name || !description || !brand || !type || !totalUnits || 
-        !purchasePrice || !sellPrice || !mrpPrice || !purchaseDate || 
-        !stockQty || !storeId) {
+    // Additional business rule validations beyond express-validator
+    // Check if user has access to the specified store
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
+      if (!req.user.storeId || req.user.storeId.toString() !== storeId?.toString()) {
+        return res.status(403).json({
+          success: false,
+          error: 'You can only create items for your assigned store'
+        });
+      }
+    }
+
+    // Validate store exists (can be enhanced with Store model check)
+    if (!storeId) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields'
+        error: 'Store ID is required'
       });
     }
 
-    // Validate price relationships
-    if (sellPrice > mrpPrice) {
+    // Sanitize and validate numeric inputs
+    const sanitizedData = {
+      totalUnits: Math.max(0, parseInt(totalUnits) || 0),
+      stockQty: Math.max(0, parseInt(stockQty) || 0),
+      purchasePrice: Math.max(0, parseFloat(purchasePrice) || 0),
+      sellPrice: Math.max(0, parseFloat(sellPrice) || 0),
+      mrpPrice: Math.max(0, parseFloat(mrpPrice) || 0),
+      minStockLevel: minStockLevel ? Math.max(0, parseInt(minStockLevel)) : undefined,
+      maxStockLevel: maxStockLevel ? Math.max(0, parseInt(maxStockLevel)) : undefined
+    };
+
+    // Additional business validations
+    if (sanitizedData.stockQty > sanitizedData.totalUnits) {
+      return res.status(400).json({
+        success: false,
+        error: 'Stock quantity cannot exceed total units'
+      });
+    }
+
+    if (sanitizedData.sellPrice > sanitizedData.mrpPrice) {
       return res.status(400).json({
         success: false,
         error: 'Selling price cannot be greater than MRP'
       });
     }
 
-    if (stockQty > totalUnits) {
+    if (sanitizedData.minStockLevel && sanitizedData.maxStockLevel && 
+        sanitizedData.minStockLevel > sanitizedData.maxStockLevel) {
       return res.status(400).json({
         success: false,
-        error: 'Stock quantity cannot be greater than total units'
+        error: 'Minimum stock level cannot be greater than maximum stock level'
       });
     }
 
     // Handle image upload with fallback to default
     const imageData = await handleImageUploadUtil(req.file, type);
 
-    // Create item data
+    // Create item data with sanitized inputs
     const itemData = {
       name: name.trim(),
       description: description.trim(),
       brand: brand.trim(),
       type,
-      totalUnits: parseInt(totalUnits),
-      purchasePrice: parseFloat(purchasePrice),
-      sellPrice: parseFloat(sellPrice),
-      mrpPrice: parseFloat(mrpPrice),
+      totalUnits: sanitizedData.totalUnits,
+      purchasePrice: sanitizedData.purchasePrice,
+      sellPrice: sanitizedData.sellPrice,
+      mrpPrice: sanitizedData.mrpPrice,
       purchaseDate: new Date(purchaseDate),
-      stockQty: parseInt(stockQty),
+      stockQty: sanitizedData.stockQty,
       storeId,
       createdBy: req.user.id,
       // Image data
@@ -73,15 +101,22 @@ const createItem = async (req, res) => {
       imageVariants: imageData.imageVariants,
       isDefaultImage: imageData.isDefaultImage,
       ...(imageData.imageMetadata && { imageMetadata: imageData.imageMetadata }),
-      // Optional fields
+      // Optional fields with sanitization
       ...(sku && { sku: sku.trim().toUpperCase() }),
       ...(barcode && { barcode: barcode.trim() }),
-      ...(minStockLevel && { minStockLevel: parseInt(minStockLevel) }),
-      ...(maxStockLevel && { maxStockLevel: parseInt(maxStockLevel) }),
+      ...(sanitizedData.minStockLevel && { minStockLevel: sanitizedData.minStockLevel }),
+      ...(sanitizedData.maxStockLevel && { maxStockLevel: sanitizedData.maxStockLevel }),
       ...(category && { category }),
-      ...(tags && { tags: tags.split(',').map(tag => tag.trim().toLowerCase()) }),
-      ...(supplier && { supplier: JSON.parse(supplier) }),
-      ...(notes && { notes: notes.trim() })
+      ...(tags && { 
+        tags: tags.split(',')
+          .map(tag => tag.trim().toLowerCase())
+          .filter(tag => tag.length > 0)
+          .slice(0, 10) // Limit to 10 tags
+      }),
+      ...(supplier && { 
+        supplier: typeof supplier === 'string' ? JSON.parse(supplier) : supplier 
+      }),
+      ...(notes && { notes: notes.trim().substring(0, 500) }) // Limit notes length
     };
 
     const newItem = new InventoryItem(itemData);
@@ -100,6 +135,21 @@ const createItem = async (req, res) => {
     });
   } catch (error) {
     console.error('Create item error:', error);
+    
+    // Handle specific validation errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => ({
+        field: err.path,
+        message: err.message
+      }));
+      
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: validationErrors
+      });
+    }
+    
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to create inventory item'
@@ -111,8 +161,7 @@ const createItem = async (req, res) => {
 // @route   GET /api/v1/inventory/items
 // @access  Private
 const getItems = async (req, res) => {
-  try {
-    const {
+  try {    const {
       page = 1,
       limit = 20,
       search,
@@ -125,6 +174,9 @@ const getItems = async (req, res) => {
       maxPrice,
       lowStock,
       outOfStock,
+      availableOnly,
+      newArrivals,
+      description,
       sortBy = 'createdAt',
       sortOrder = 'desc',
       includeDeleted = false
@@ -143,9 +195,7 @@ const getItems = async (req, res) => {
       query.storeId = req.user.storeId || storeId;
     } else if (storeId) {
       query.storeId = storeId;
-    }
-
-    // Text search
+    }    // Text search
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -162,6 +212,23 @@ const getItems = async (req, res) => {
     if (status) query.status = status;
     if (category) query.category = category;
 
+    // Description partial text match
+    if (description) {
+      query.description = { $regex: description, $options: 'i' };
+    }
+
+    // Available items only (stockQty > 0)
+    if (availableOnly === 'true') {
+      query.stockQty = { $gt: 0 };
+    }
+
+    // New arrivals filter (last 7 days by purchaseDate)
+    if (newArrivals === 'true') {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      query.purchaseDate = { $gte: sevenDaysAgo };
+    }
+
     // Price range
     if (minPrice || maxPrice) {
       query.sellPrice = {};
@@ -176,11 +243,9 @@ const getItems = async (req, res) => {
     
     if (outOfStock === 'true') {
       query.stockQty = 0;
-    }
-
-    // Sorting
+    }    // Sorting
     const sortOptions = {};
-    const validSortFields = ['name', 'brand', 'type', 'sellPrice', 'stockQty', 'createdAt', 'updatedAt'];
+    const validSortFields = ['name', 'brand', 'type', 'sellPrice', 'mrpPrice', 'purchasePrice', 'purchaseDate', 'stockQty', 'createdAt', 'updatedAt'];
     
     if (validSortFields.includes(sortBy)) {
       sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
@@ -260,10 +325,10 @@ const getItems = async (req, res) => {
         totalPotentialRevenue: 0,
         lowStockItems: 0,
         outOfStockItems: 0
-      },
-      filters: {
+      },      filters: {
         search, type, brand, storeId, status, category,
-        minPrice, maxPrice, lowStock, outOfStock
+        minPrice, maxPrice, lowStock, outOfStock,
+        availableOnly, newArrivals, description
       }
     };
 
@@ -416,11 +481,12 @@ const updateItem = async (req, res) => {
         console.warn('Image update failed, continuing with other updates:', imageError);
         // Don't fail the entire update if image handling fails
       }
-    }
-
-    // Handle other data transformations
+    }    // Handle other data transformations with enhanced validation
     if (updateData.tags && typeof updateData.tags === 'string') {
-      updateData.tags = updateData.tags.split(',').map(tag => tag.trim().toLowerCase());
+      updateData.tags = updateData.tags.split(',')
+        .map(tag => tag.trim().toLowerCase())
+        .filter(tag => tag.length > 0 && tag.length <= 50)
+        .slice(0, 10); // Limit to 10 tags
     }
 
     if (updateData.supplier && typeof updateData.supplier === 'string') {
@@ -432,14 +498,59 @@ const updateItem = async (req, res) => {
       }
     }
 
-    // Type conversions
-    if (updateData.totalUnits) updateData.totalUnits = parseInt(updateData.totalUnits);
-    if (updateData.stockQty) updateData.stockQty = parseInt(updateData.stockQty);
-    if (updateData.purchasePrice) updateData.purchasePrice = parseFloat(updateData.purchasePrice);
-    if (updateData.sellPrice) updateData.sellPrice = parseFloat(updateData.sellPrice);
-    if (updateData.mrpPrice) updateData.mrpPrice = parseFloat(updateData.mrpPrice);
-    if (updateData.minStockLevel) updateData.minStockLevel = parseInt(updateData.minStockLevel);
-    if (updateData.maxStockLevel) updateData.maxStockLevel = parseInt(updateData.maxStockLevel);
+    // Enhanced type conversions with validation
+    if (updateData.totalUnits) {
+      updateData.totalUnits = Math.max(0, parseInt(updateData.totalUnits) || 0);
+    }
+    if (updateData.stockQty) {
+      updateData.stockQty = Math.max(0, parseInt(updateData.stockQty) || 0);
+    }
+    if (updateData.purchasePrice) {
+      updateData.purchasePrice = Math.max(0, parseFloat(updateData.purchasePrice) || 0);
+    }
+    if (updateData.sellPrice) {
+      updateData.sellPrice = Math.max(0, parseFloat(updateData.sellPrice) || 0);
+    }
+    if (updateData.mrpPrice) {
+      updateData.mrpPrice = Math.max(0, parseFloat(updateData.mrpPrice) || 0);
+    }
+    if (updateData.minStockLevel) {
+      updateData.minStockLevel = Math.max(0, parseInt(updateData.minStockLevel) || 0);
+    }
+    if (updateData.maxStockLevel) {
+      updateData.maxStockLevel = Math.max(0, parseInt(updateData.maxStockLevel) || 0);
+    }
+
+    // Business rule validations
+    if (updateData.stockQty && updateData.totalUnits && updateData.stockQty > updateData.totalUnits) {
+      return res.status(400).json({
+        success: false,
+        error: 'Stock quantity cannot exceed total units'
+      });
+    }
+
+    if (updateData.sellPrice && updateData.mrpPrice && updateData.sellPrice > updateData.mrpPrice) {
+      return res.status(400).json({
+        success: false,
+        error: 'Selling price cannot be greater than MRP'
+      });
+    }
+
+    if (updateData.minStockLevel && updateData.maxStockLevel && 
+        updateData.minStockLevel > updateData.maxStockLevel) {
+      return res.status(400).json({
+        success: false,
+        error: 'Minimum stock level cannot be greater than maximum stock level'
+      });
+    }
+
+    // Sanitize text fields
+    if (updateData.name) updateData.name = updateData.name.trim();
+    if (updateData.description) updateData.description = updateData.description.trim();
+    if (updateData.brand) updateData.brand = updateData.brand.trim();
+    if (updateData.sku) updateData.sku = updateData.sku.trim().toUpperCase();
+    if (updateData.barcode) updateData.barcode = updateData.barcode.trim();
+    if (updateData.notes) updateData.notes = updateData.notes.trim().substring(0, 500);
 
     // Update the item
     const updatedItem = await InventoryItem.findByIdAndUpdate(
@@ -454,15 +565,36 @@ const updateItem = async (req, res) => {
     .populate('storeId', 'name location')
     .populate('createdBy', 'firstName lastName email')
     .populate('lastUpdatedBy', 'firstName lastName email')
-    .populate('category', 'name');
-
-    res.status(200).json({
+    .populate('category', 'name');    res.status(200).json({
       success: true,
       message: 'Item updated successfully',
       data: updatedItem
     });
   } catch (error) {
     console.error('Update item error:', error);
+    
+    // Handle specific validation errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => ({
+        field: err.path,
+        message: err.message
+      }));
+      
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: validationErrors
+      });
+    }
+    
+    // Handle cast errors (invalid ObjectId, etc.)
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid ${error.path}: ${error.value}`
+      });
+    }
+    
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to update inventory item'
@@ -588,20 +720,30 @@ const restoreItem = async (req, res) => {
 
 // @desc    Update stock quantity
 // @route   PATCH /api/v1/inventory/items/:id/stock
-// @access  Private (Admin/Manager)
+// @access  Private (Admin/Manager/Staff)
 const updateStock = async (req, res) => {
   try {
     const { id } = req.params;
     const { quantity, operation = 'set', reason } = req.body;
 
-    if (!quantity || quantity < 0) {
+    // Enhanced input validation
+    const sanitizedQuantity = parseInt(quantity);
+    if (!quantity || sanitizedQuantity < 0 || isNaN(sanitizedQuantity)) {
       return res.status(400).json({
         success: false,
-        error: 'Valid quantity is required'
+        error: 'Valid non-negative quantity is required'
       });
     }
 
-    const item = await InventoryItem.findById(id);
+    if (!['set', 'add', 'subtract'].includes(operation)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Operation must be one of: set, add, subtract'
+      });
+    }
+
+    const item = await InventoryItem.findById(id)
+      .populate('storeId', 'name location');
 
     if (!item) {
       return res.status(404).json({
@@ -610,10 +752,62 @@ const updateStock = async (req, res) => {
       });
     }
 
-    const updatedItem = await item.updateStock(parseInt(quantity), operation);
+    // Check access permissions for store-specific operations
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
+      if (item.storeId._id.toString() !== req.user.storeId?.toString()) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied to update stock for this item'
+        });
+      }
+    }
+
+    // Validate the operation won't result in negative stock
+    let newStockQty;
+    switch (operation) {
+      case 'set':
+        newStockQty = sanitizedQuantity;
+        break;
+      case 'add':
+        newStockQty = item.stockQty + sanitizedQuantity;
+        break;
+      case 'subtract':
+        newStockQty = item.stockQty - sanitizedQuantity;
+        if (newStockQty < 0) {
+          return res.status(400).json({
+            success: false,
+            error: `Cannot subtract ${sanitizedQuantity} from current stock of ${item.stockQty}. Result would be negative.`
+          });
+        }
+        break;
+    }
+
+    // Validate against total units if applicable
+    if (newStockQty > item.totalUnits) {
+      return res.status(400).json({
+        success: false,
+        error: `Stock quantity cannot exceed total units (${item.totalUnits})`
+      });
+    }
+
+    const updatedItem = await item.updateStock(sanitizedQuantity, operation);
     
-    // Log stock movement (you can extend this to create a StockMovement model)
-    console.log(`Stock updated for ${item.name}: ${operation} ${quantity}. New stock: ${updatedItem.stockQty}. Reason: ${reason || 'Manual update'}`);
+    // Log stock movement with enhanced details
+    const stockMovementLog = {
+      itemId: item._id,
+      itemName: item.name,
+      storeId: item.storeId._id,
+      storeName: item.storeId.name,
+      operation,
+      quantity: sanitizedQuantity,
+      previousStock: item.stockQty,
+      newStock: updatedItem.stockQty,
+      reason: reason || 'Manual stock update',
+      updatedBy: req.user.id,
+      timestamp: new Date()
+    };
+    
+    console.log('📦 Stock Movement:', stockMovementLog);
 
     res.status(200).json({
       success: true,
@@ -621,18 +815,247 @@ const updateStock = async (req, res) => {
       data: {
         id: updatedItem._id,
         name: updatedItem.name,
-        previousStock: operation === 'set' ? null : 
-          (operation === 'add' ? updatedItem.stockQty - quantity : updatedItem.stockQty + quantity),
+        previousStock: item.stockQty,
         newStock: updatedItem.stockQty,
         operation,
-        quantity: parseInt(quantity)
+        quantity: sanitizedQuantity,
+        reason: reason || 'Manual update',
+        stockMovement: stockMovementLog
       }
     });
   } catch (error) {
     console.error('Update stock error:', error);
+    
+    // Handle specific validation errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => ({
+        field: err.path,
+        message: err.message
+      }));
+      
+      return res.status(400).json({
+        success: false,
+        error: 'Stock update validation failed',
+        details: validationErrors
+      });
+    }
+    
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to update stock'
+    });  }
+};
+
+// @desc    Get selectable items for billing
+// @route   GET /api/v1/inventory/selectable
+// @access  Private (Staff and above)
+const getSelectableItems = async (req, res) => {
+  try {
+    const {
+      search,
+      sort = 'name',
+      limit = 50,
+      page = 1,
+      storeId
+    } = req.query;
+
+    // Build base query for selectable items
+    const query = {
+      isDeleted: false,
+      isActive: true,
+      stockQty: { $gt: 0 }, // Only items with stock > 0
+      status: { $ne: 'discontinued' }
+    };
+
+    // Store access control
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
+      // Non-admin users can only see items from their store
+      query.storeId = req.user.storeId;
+    } else if (storeId) {
+      // Admins can filter by specific store
+      query.storeId = storeId;
+    }
+
+    // Add search functionality
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      query.$or = [
+        { name: { $regex: searchTerm, $options: 'i' } },
+        { brand: { $regex: searchTerm, $options: 'i' } },
+        { description: { $regex: searchTerm, $options: 'i' } },
+        { sku: { $regex: searchTerm, $options: 'i' } }
+      ];
+    }
+
+    // Build sort options
+    let sortOptions = {};
+    switch (sort) {
+      case 'mostSold':
+        sortOptions = { orderCount: -1, totalSold: -1 };
+        break;
+      case 'name':
+        sortOptions = { name: 1 };
+        break;
+      case 'stockQty':
+        sortOptions = { stockQty: -1 };
+        break;
+      case 'price':
+        sortOptions = { sellPrice: 1 };
+        break;
+      case 'newest':
+        sortOptions = { createdAt: -1 };
+        break;
+      default:
+        sortOptions = { name: 1 };
+    }
+
+    // Pagination
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const skip = (Math.max(1, parseInt(page)) - 1) * limitNum;
+
+    // Execute query with selected fields
+    const items = await InventoryItem.find(query)
+      .select('name brand sellPrice mrpPrice stockQty imageUrl orderCount totalSold type status sku')
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    // Get total count for pagination
+    const totalItems = await InventoryItem.countDocuments(query);
+    const totalPages = Math.ceil(totalItems / limitNum);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+
+    // Enhance items with computed fields
+    const enrichedItems = items.map(item => ({
+      _id: item._id,
+      name: item.name,
+      brand: item.brand,
+      sellPrice: item.sellPrice,
+      mrpPrice: item.mrpPrice,
+      stockQty: item.stockQty,
+      imageUrl: item.imageUrl || getDefaultImageUrl(item.type),
+      orderCount: item.orderCount || 0,
+      totalSold: item.totalSold || 0,
+      type: item.type,
+      status: item.status,
+      sku: item.sku,
+      // Add computed fields
+      discount: item.mrpPrice > item.sellPrice ? 
+        Math.round(((item.mrpPrice - item.sellPrice) / item.mrpPrice) * 100) : 0,
+      inStock: item.stockQty > 0,
+      lowStock: item.stockQty <= (item.minStockLevel || 10)
+    }));
+
+    res.status(200).json({
+      success: true,
+      message: 'Selectable items retrieved successfully',
+      data: {
+        items: enrichedItems,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages,
+          totalItems,
+          itemsPerPage: limitNum,
+          hasNextPage,
+          hasPrevPage
+        },
+        filters: {
+          search: search || '',
+          sort,
+          storeId: query.storeId
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching selectable items:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch selectable items',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });  }
+};
+
+// @desc    Get item metadata for billing
+// @route   GET /api/v1/inventory/:id/metadata
+// @access  Private (Staff and above)
+const getItemMetadata = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate ObjectId
+    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid item ID format'
+      });
+    }
+
+    // Store access control
+    const query = {
+      _id: id,
+      isDeleted: false,
+      isActive: true
+    };
+
+    // Non-admin users can only access items from their store
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
+      query.storeId = req.user.storeId;
+    }
+
+    // Find the item with minimal fields needed for billing
+    const item = await InventoryItem.findOne(query)
+      .select('name brand sellPrice mrpPrice stockQty imageUrl orderCount totalSold type status sku barcode minStockLevel')
+      .lean();
+
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        error: 'Item not found or you do not have access to this item'
+      });
+    }
+
+    // Enhance with computed fields for billing UI
+    const enrichedItem = {
+      _id: item._id,
+      name: item.name,
+      brand: item.brand,
+      sellPrice: item.sellPrice,
+      mrpPrice: item.mrpPrice,
+      stockQty: item.stockQty,
+      imageUrl: item.imageUrl || getDefaultImageUrl(item.type),
+      orderCount: item.orderCount || 0,
+      totalSold: item.totalSold || 0,
+      type: item.type,
+      status: item.status,
+      sku: item.sku,
+      barcode: item.barcode,
+      // Computed fields for billing UI
+      discount: item.mrpPrice > item.sellPrice ? 
+        Math.round(((item.mrpPrice - item.sellPrice) / item.mrpPrice) * 100) : 0,
+      inStock: item.stockQty > 0,
+      lowStock: item.stockQty <= (item.minStockLevel || 10),
+      outOfStock: item.stockQty === 0,
+      displayText: `${item.name} - ${item.brand}`,
+      priceDisplay: `₹${item.sellPrice}`,
+      stockDisplay: `${item.stockQty} units`,
+      isAvailable: item.stockQty > 0 && item.status !== 'discontinued'
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Item metadata retrieved successfully',
+      data: enrichedItem
+    });
+
+  } catch (error) {
+    console.error('Error fetching item metadata:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch item metadata',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -645,5 +1068,7 @@ module.exports = {
   updateItem,
   deleteItem,
   restoreItem,
-  updateStock
+  updateStock,
+  getSelectableItems,
+  getItemMetadata
 };

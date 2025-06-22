@@ -6,6 +6,7 @@ const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
 const connectDB = require('./config/database');
+const { applySecurity } = require('./middleware/security');
 
 // Try to import errorHandler, use fallback if it doesn't exist
 let errorHandler;
@@ -30,16 +31,20 @@ connectDB();
 
 const app = express();
 
-// Body parser middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+// Apply comprehensive security middleware
+applySecurity(app);
 
-// Enable CORS
-app.use(cors());
+// Body parser middleware (with size limits)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
 // Import routes
 const authRoutes = require('./routes/auth');
 const inventoryRoutes = require('./routes/inventoryRoutes');
+const storeRoutes = require('./routes/stores');
+const categoryRoutes = require('./routes/categories');
+const customerRoutes = require('./routes/customers');
+const billingRoutes = require('./routes/billing');
 
 
 // Basic route
@@ -50,6 +55,10 @@ app.get('/', (req, res) => {
 // Mount routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/inventory', inventoryRoutes);
+app.use('/api/v1/stores', storeRoutes);
+app.use('/api/v1/categories', categoryRoutes);
+app.use('/api/v1/customers', customerRoutes);
+app.use('/api/v1/billing', billingRoutes);
 
 // Error handler middleware (must be last)
 app.use(errorHandler);

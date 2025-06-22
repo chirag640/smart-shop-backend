@@ -112,11 +112,120 @@ const userSchema = new mongoose.Schema({
       message: 'Date of birth cannot be in the future'
     }
   },
-  
-  gender: {
+    gender: {
     type: String,
     enum: ['male', 'female', 'other'],
     lowercase: true
+  },
+  
+  // Customer Profile (for customer role)
+  profile: {
+    whatsappNumber: {
+      type: String,
+      trim: true,
+      match: [/^\+?[\d\s\-\(\)]+$/, 'Please provide a valid WhatsApp number']
+    },
+    
+    addresses: [{
+      type: {
+        type: String,
+        enum: ['home', 'work', 'billing', 'shipping', 'primary'],
+        default: 'primary'
+      },
+      address: {
+        type: String,
+        required: true,
+        trim: true,
+        maxLength: [200, 'Address cannot exceed 200 characters']
+      },
+      city: {
+        type: String,
+        trim: true,
+        maxLength: [50, 'City cannot exceed 50 characters']
+      },
+      state: {
+        type: String,
+        trim: true,
+        maxLength: [50, 'State cannot exceed 50 characters']
+      },
+      zipCode: {
+        type: String,
+        trim: true,
+        maxLength: [10, 'Zip code cannot exceed 10 characters']
+      },
+      country: {
+        type: String,
+        trim: true,
+        default: 'India',
+        maxLength: [50, 'Country cannot exceed 50 characters']
+      },
+      isDefault: {
+        type: Boolean,
+        default: false
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now
+      }
+    }],
+    
+    notes: {
+      type: String,
+      trim: true,
+      maxLength: [500, 'Notes cannot exceed 500 characters']
+    },
+    
+    // Customer-specific audit fields
+    createdByStaff: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      validate: {
+        validator: function(value) {
+          // Only required for customers
+          if (this.role === 'customer') {
+            return value != null;
+          }
+          return true;
+        },
+        message: 'Created by staff is required for customers'
+      }
+    },
+    
+    createdByStore: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Store'
+    },
+    
+    // Customer preferences
+    preferredContactMethod: {
+      type: String,
+      enum: ['email', 'phone', 'whatsapp', 'sms'],
+      default: 'phone'
+    },
+    
+    // Customer tags for categorization
+    tags: [{
+      type: String,
+      trim: true,
+      lowercase: true
+    }],
+    
+    // Customer loyalty info
+    loyaltyPoints: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    
+    totalPurchases: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    
+    lastPurchaseDate: {
+      type: Date
+    }
   },
   
   // Security
@@ -189,6 +298,10 @@ const userSchema = new mongoose.Schema({
 userSchema.index({ email: 1, isActive: 1 });
 userSchema.index({ role: 1, storeId: 1 });
 userSchema.index({ isEmailVerified: 1, isActive: 1 });
+userSchema.index({ phoneNumber: 1, role: 1 });
+userSchema.index({ firstName: 1, lastName: 1, role: 1 });
+userSchema.index({ 'profile.createdByStore': 1, role: 1 });
+userSchema.index({ createdAt: -1, role: 1 });
 
 // Virtual for full name
 userSchema.virtual('fullName').get(function() {

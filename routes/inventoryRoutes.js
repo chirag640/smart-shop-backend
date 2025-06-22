@@ -6,11 +6,14 @@ const {
   updateItem,
   deleteItem,
   restoreItem,
-  updateStock
+  updateStock,
+  getSelectableItems,
+  getItemMetadata
 } = require('../controllers/inventoryController');
 const { authMiddleware, authorize } = require('../middlewares/auth');
 const { validateInventoryItem, validateStockUpdate, validateInventoryQuery } = require('../middleware/validation');
 const { handleImageUpload, optionalImageUpload } = require('../middleware/upload');
+const { fileUploadSecurity } = require('../middleware/security');
 const { 
   generalLimiter, 
   uploadLimiter, 
@@ -24,7 +27,105 @@ const router = express.Router();
 // Apply general rate limiting to all inventory routes
 router.use(generalLimiter);
 
-
+/**
+ * @swagger
+ * /inventory/selectable:
+ *   get:
+ *     summary: Get selectable items for billing
+ *     description: Return items eligible for selection in billing (only items with stock > 0)
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by name, brand, or description
+ *         example: "Samsung"
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [mostSold, name, stockQty, price, newest]
+ *           default: name
+ *         description: Sort order
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 50
+ *         description: Number of items per page
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: storeId
+ *         schema:
+ *           type: string
+ *         description: Filter by store ID (admin only)
+ *     responses:
+ *       200:
+ *         description: Selectable items retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           brand:
+ *                             type: string
+ *                           sellPrice:
+ *                             type: number
+ *                           mrpPrice:
+ *                             type: number
+ *                           stockQty:
+ *                             type: integer
+ *                           imageUrl:
+ *                             type: string
+ *                           orderCount:
+ *                             type: integer
+ *                           discount:
+ *                             type: integer
+ *                           inStock:
+ *                             type: boolean
+ *                           lowStock:
+ *                             type: boolean
+ *                     pagination:
+ *                       type: object
+ *                     filters:
+ *                       type: object
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
+router.get('/selectable',
+  authMiddleware,
+  authorize('staff', 'manager', 'admin', 'superadmin'),
+  catchAsync(getSelectableItems)
+);
 
 router.get('/items',
   authMiddleware,
@@ -32,6 +133,101 @@ router.get('/items',
   catchAsync(getItems)
 );
 
+/**
+ * @swagger
+ * /inventory/items/{id}/metadata:
+ *   get:
+ *     summary: Get item metadata for billing
+ *     description: Retrieve essential item details by ID for billing screen usage
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Inventory item ID
+ *         example: "60d0fe4f5311236168a109ca"
+ *     responses:
+ *       200:
+ *         description: Item metadata retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                       example: "60d0fe4f5311236168a109ca"
+ *                     name:
+ *                       type: string
+ *                       example: "Product A"
+ *                     brand:
+ *                       type: string
+ *                       example: "Brand X"
+ *                     sellPrice:
+ *                       type: number
+ *                       example: 120
+ *                     mrpPrice:
+ *                       type: number
+ *                       example: 150
+ *                     stockQty:
+ *                       type: integer
+ *                       example: 18
+ *                     imageUrl:
+ *                       type: string
+ *                       example: "https://example.com/image.jpg"
+ *                     orderCount:
+ *                       type: integer
+ *                       example: 52
+ *                     discount:
+ *                       type: integer
+ *                       example: 20
+ *                     inStock:
+ *                       type: boolean
+ *                       example: true
+ *                     lowStock:
+ *                       type: boolean
+ *                       example: false
+ *                     isAvailable:
+ *                       type: boolean
+ *                       example: true
+ *                     displayText:
+ *                       type: string
+ *                       example: "Product A - Brand X"
+ *                     priceDisplay:
+ *                       type: string
+ *                       example: "₹120"
+ *       404:
+ *         description: Item not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 error:
+ *                   type: string
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
+router.get('/items/:id/metadata',
+  authMiddleware,
+  authorize('staff', 'manager', 'admin', 'superadmin'),
+  catchAsync(getItemMetadata)
+);
 
 router.get('/items/:id',
   authMiddleware,
@@ -44,6 +240,7 @@ router.post('/items',
   authMiddleware,
   authorize('admin', 'manager', 'superadmin'),
   optionalImageUpload,
+  fileUploadSecurity,
   validateInventoryItem,
   createUserLimiter(60 * 60 * 1000, 10), // 10 items per hour per user
   catchAsync(createItem)
@@ -55,6 +252,8 @@ router.put('/items/:id',
   authMiddleware,
   authorize('admin', 'manager', 'superadmin'),
   optionalImageUpload,
+  fileUploadSecurity,
+  validateInventoryItem,
   createUserLimiter(60 * 60 * 1000, 20), // 20 updates per hour per user
   catchAsync(updateItem)
 );

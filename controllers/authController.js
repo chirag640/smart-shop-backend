@@ -1,4 +1,4 @@
-const { User, OTP } = require('../models');
+const { User, Store, OTP } = require('../models');
 const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailService');
 const { generateTokenForUser } = require('../utils/jwt');
 const { catchAsync, AppError } = require('../middleware/errorHandler');

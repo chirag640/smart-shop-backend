@@ -315,11 +315,21 @@ const inventoryItemSchema = new mongoose.Schema({
   lastRestockedDate: {
     type: Date
   },
-  
-  totalSold: {
+    totalSold: {
     type: Number,
     default: 0,
     min: [0, 'Total sold cannot be negative']
+  },
+  
+  // Sales tracking for billing selection
+  orderCount: {
+    type: Number,
+    default: 0,
+    min: [0, 'Order count cannot be negative'],
+    validate: {
+      validator: Number.isInteger,
+      message: 'Order count must be a whole number'
+    }
   },
   
   // Notes and Comments
@@ -350,6 +360,8 @@ inventoryItemSchema.index({ type: 1, brand: 1 });
 inventoryItemSchema.index({ status: 1, isActive: 1 });
 inventoryItemSchema.index({ purchaseDate: -1 });
 inventoryItemSchema.index({ stockQty: 1 });
+inventoryItemSchema.index({ orderCount: -1 }); // For sorting by most sold
+inventoryItemSchema.index({ stockQty: 1, isActive: 1, isDeleted: 1 }); // For selectable items query
 
 // Virtual fields
 inventoryItemSchema.virtual('profitMargin').get(function() {

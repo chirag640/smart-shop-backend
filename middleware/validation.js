@@ -354,6 +354,218 @@ const validateInventoryQuery = [
   handleValidationErrors
 ];
 
+// Store validation rules
+const validateStore = [
+  body('name')
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Store name must be between 2 and 100 characters')
+    .matches(/^[a-zA-Z0-9\s\-_.,&()]+$/)
+    .withMessage('Store name contains invalid characters'),
+    
+  body('storeType')
+    .isIn(['retail', 'warehouse', 'outlet', 'franchise', 'online'])
+    .withMessage('Invalid store type'),
+    
+  body('location.address')
+    .trim()
+    .isLength({ min: 10, max: 200 })
+    .withMessage('Address must be between 10 and 200 characters'),
+    
+  body('location.city')
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('City must be between 2 and 50 characters')
+    .matches(/^[a-zA-Z\s\-']+$/)
+    .withMessage('City contains invalid characters'),
+    
+  body('location.state')
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('State must be between 2 and 50 characters')
+    .matches(/^[a-zA-Z\s\-']+$/)
+    .withMessage('State contains invalid characters'),
+    
+  body('location.zipCode')
+    .matches(/^\d{5,6}$/)
+    .withMessage('Zip code must be 5-6 digits'),
+    
+  body('location.country')
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Country must be between 2 and 50 characters')
+    .matches(/^[a-zA-Z\s\-']+$/)
+    .withMessage('Country contains invalid characters'),
+    
+  body('phoneNumber')
+    .isMobilePhone()
+    .withMessage('Please provide a valid phone number'),
+    
+  body('email')
+    .optional()
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
+    
+  body('manager')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid manager ID'),
+    
+  body('operatingHours')
+    .optional()
+    .isObject()
+    .withMessage('Operating hours must be an object'),
+    
+  body('description')
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Description cannot exceed 500 characters'),
+
+  handleValidationErrors
+];
+
+// Category validation rules
+const validateCategory = [
+  body('name')
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Category name must be between 2 and 100 characters')
+    .matches(/^[a-zA-Z0-9\s\-_.,&()]+$/)
+    .withMessage('Category name contains invalid characters'),
+    
+  body('description')
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Description cannot exceed 500 characters'),
+    
+  body('parentCategory')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid parent category ID'),
+    
+  body('isActive')
+    .optional()
+    .isBoolean()
+    .withMessage('isActive must be a boolean value'),
+    
+  body('displayOrder')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('Display order must be a non-negative integer'),
+    
+  body('metaDescription')
+    .optional()
+    .trim()
+    .isLength({ max: 160 })
+    .withMessage('Meta description cannot exceed 160 characters'),
+    
+  body('tags')
+    .optional()
+    .custom((value) => {
+      if (typeof value === 'string') {
+        const tags = value.split(',').map(tag => tag.trim());
+        if (tags.some(tag => tag.length > 30)) {
+          throw new Error('Each tag must be 30 characters or less');
+        }
+        if (tags.length > 5) {
+          throw new Error('Maximum 5 tags allowed');
+        }
+      }
+      return true;
+    }),
+
+  handleValidationErrors
+];
+
+// Customer creation validation
+const validateCustomerCreation = [
+  body('firstName')
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('First name must be between 2 and 50 characters')
+    .matches(/^[a-zA-Z\s\-']+$/)
+    .withMessage('First name can only contain letters, spaces, hyphens, and apostrophes'),
+    
+  body('lastName')
+    .trim()
+    .isLength({ min: 1, max: 50 })
+    .withMessage('Last name must be between 1 and 50 characters')
+    .matches(/^[a-zA-Z\s\-']+$/)
+    .withMessage('Last name can only contain letters, spaces, hyphens, and apostrophes'),
+    
+  body('email')
+    .optional()
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
+    
+  body('phoneNumber')
+    .isMobilePhone()
+    .withMessage('Please provide a valid phone number'),
+    
+  body('whatsappNumber')
+    .optional()
+    .isMobilePhone()
+    .withMessage('Please provide a valid WhatsApp number'),
+    
+  body('sameAsWhatsapp')
+    .optional()
+    .isBoolean()
+    .withMessage('sameAsWhatsapp must be a boolean value'),
+    
+  body('address')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Address cannot exceed 200 characters'),
+    
+  body('notes')
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Notes cannot exceed 500 characters'),
+
+  handleValidationErrors
+];
+
+// Quick customer creation validation
+const validateQuickCustomerCreation = [
+  body('name')
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Name must be between 2 and 100 characters')
+    .matches(/^[a-zA-Z\s\-']+$/)
+    .withMessage('Name can only contain letters, spaces, hyphens, and apostrophes'),
+    
+  body('phoneNumber')
+    .isMobilePhone()
+    .withMessage('Please provide a valid phone number'),
+    
+  body('whatsappNumber')
+    .optional()
+    .isMobilePhone()
+    .withMessage('Please provide a valid WhatsApp number'),
+    
+  body('sameAsWhatsapp')
+    .optional()
+    .isBoolean()
+    .withMessage('sameAsWhatsapp must be a boolean value'),
+
+  handleValidationErrors
+];
+
+// Phone validation for check endpoint
+const validatePhoneCheck = [
+  query('phone')
+    .isMobilePhone()
+    .withMessage('Please provide a valid phone number'),
+
+  handleValidationErrors
+];
+
 // Enhanced query builder helper function
 const buildInventoryQuery = (queryParams, userRole, userStoreId) => {
   const {
@@ -585,6 +797,11 @@ module.exports = {
   validateUserRegistration,
   validateOTP,
   validateInventoryQuery,
+  validateStore,
+  validateCategory,
+  validateCustomerCreation,
+  validateQuickCustomerCreation,
+  validatePhoneCheck,
   buildInventoryQuery,
   buildSortOptions,
   buildPaginationOptions,

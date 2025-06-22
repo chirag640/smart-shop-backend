@@ -25,15 +25,21 @@ mongoose.connection.on('error', (err) => {
 
 // Central export file for all models
 const User = require('./User');
+const Store = require('./Store');
+const Category = require('./Category');
 const InventoryItem = require('./InventoryItem');
 const OTP = require('./OTP');
 const OTPRateLimit = require('./OTPRateLimit');
+const Sale = require('./Sale');
 
 // Export all models
 module.exports = {
   connectDB,
   User,
+  Store,
+  Category,
   InventoryItem,
   OTP,
-  OTPRateLimit
+  OTPRateLimit,
+  Sale
 };

@@ -24,7 +24,7 @@ const authMiddleware = async (req, res, next) => {
         });
       }
 
-      next();
+      return next(); // Add return here to prevent further execution
     } catch (error) {
       console.error(error);
       return res.status(401).json({
@@ -33,13 +33,11 @@ const authMiddleware = async (req, res, next) => {
       });
     }
   }
-
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      error: 'Not authorized, no token'
-    });
-  }
+  // This only runs if no authorization header or doesn't start with Bearer
+  return res.status(401).json({
+    success: false,
+    error: 'Not authorized, no token'
+  });
 };
 
 // Role-based access control

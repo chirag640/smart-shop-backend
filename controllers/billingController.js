@@ -7,6 +7,7 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 const { InvoiceNotificationService } = require('../utils/invoiceNotificationService');
+const Store = require('../models/Store');
 
 /**
  * Generate next invoice number
@@ -691,7 +692,7 @@ const getInvoiceForPrint = async (req, res) => {
     const { invoiceNumber } = req.params;
 
     const sale = await Sale.findOne({ invoiceNumber })
-      .populate('customerId', 'firstName lastName name email phone address role createdAt')
+      .populate('customerId', 'firstName lastName email phone address role createdAt')
       .populate('handledBy', 'firstName lastName name email role')
       .populate('items.itemId', 'name brand sku');
 
@@ -737,83 +738,32 @@ const getInvoicePDF = async (req, res) => {
       });
     }
 
+    // Fetch the store document using sale.storeId
+    const storeDoc = await Store.findById(sale.storeId);
+    let store = null;
+    if (storeDoc) {
+      // Map all relevant fields for the PDF
+      store = {
+        name: storeDoc.name,
+        description: storeDoc.description,
+        storeType: storeDoc.storeType,
+        address: storeDoc.location?.address + ', ' + storeDoc.location?.city + ', ' + storeDoc.location?.state + ' - ' + storeDoc.location?.pincode + ', ' + storeDoc.location?.country,
+        phone: storeDoc.contactInfo?.phone,
+        email: storeDoc.contactInfo?.email,
+        website: storeDoc.contactInfo?.website,
+        operatingHours: storeDoc.operatingHours
+      };
+      console.log('PDF Store details:', store); // Debug print
+    }
+
     // Create PDF document
     const doc = new PDFDocument({ margin: 50 });
-    
-    // Set response headers
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoiceNumber}.pdf"`);
-    
-    // Pipe PDF to response
     doc.pipe(res);
 
-    // Add company header
-    doc.fontSize(20).text('Smart Shop', 50, 50);
-    doc.fontSize(10).text('Complete Inventory Management System', 50, 75);
-    doc.text('Address: Your Store Address', 50, 90);
-    doc.text('Phone: Your Phone Number', 50, 105);
-    
-    // Add invoice details
-    doc.fontSize(16).text('INVOICE', 400, 50);
-    doc.fontSize(10);
-    doc.text(`Invoice Number: ${sale.invoiceNumber}`, 400, 75);
-    doc.text(`Date: ${sale.saleDate.toLocaleDateString()}`, 400, 90);
-    doc.text(`Payment Mode: ${sale.paymentMode.toUpperCase()}`, 400, 105);
-
-    // Add customer details
-    doc.text('Bill To:', 50, 150);
-    doc.text(`${sale.customerName}`, 50, 165);
-    if (sale.customerPhone) doc.text(`Phone: ${sale.customerPhone}`, 50, 180);
-    if (sale.customerEmail) doc.text(`Email: ${sale.customerEmail}`, 50, 195);
-
-    // Add items table
-    let yPosition = 240;
-    
-    // Table headers
-    doc.text('Item', 50, yPosition);
-    doc.text('Qty', 200, yPosition);
-    doc.text('Price', 250, yPosition);
-    doc.text('Total', 350, yPosition);
-    
-    // Draw line under headers
-    doc.moveTo(50, yPosition + 15).lineTo(450, yPosition + 15).stroke();
-    yPosition += 25;
-
-    // Add items
-    sale.items.forEach(item => {
-      doc.text(item.itemName, 50, yPosition);
-      doc.text(item.quantity.toString(), 200, yPosition);
-      doc.text(`₹${item.unitPrice.toFixed(2)}`, 250, yPosition);
-      doc.text(`₹${item.totalPrice.toFixed(2)}`, 350, yPosition);
-      yPosition += 20;
-    });
-
-    // Add totals
-    yPosition += 20;
-    doc.moveTo(50, yPosition).lineTo(450, yPosition).stroke();
-    yPosition += 15;
-
-    doc.text(`Subtotal: ₹${sale.subtotal.toFixed(2)}`, 300, yPosition);
-    yPosition += 15;
-    
-    if (sale.totalDiscount > 0) {
-      doc.text(`Discount: -₹${sale.totalDiscount.toFixed(2)}`, 300, yPosition);
-      yPosition += 15;
-    }
-    
-    doc.fontSize(12).text(`Final Amount: ₹${sale.finalAmount.toFixed(2)}`, 300, yPosition);
-    
-    if (sale.savings > 0) {
-      yPosition += 20;
-      doc.fontSize(10).text(`You Saved: ₹${sale.savings.toFixed(2)}`, 300, yPosition);
-    }
-
-    // Add footer
-    doc.fontSize(8);
-    doc.text('Thank you for shopping with us!', 50, yPosition + 60);
-    doc.text('For support, contact us at support@smartshop.com', 50, yPosition + 75);
-
-    // Finalize PDF
+    // Use the improved PDF content generator
+    generateInvoicePDFContent(doc, sale, store);
     doc.end();
 
   } catch (error) {
@@ -1134,107 +1084,144 @@ const generateInvoicePDFBuffer = async (sale) => {
 };
 
 /**
- * Generate PDF content (shared function) - Enhanced with colors and styling
+ * Generate PDF content (shared function) - Clean, modern, single-page, sample-inspired
+ * @param {PDFDocument} doc
+ * @param {Object} sale
+ * @param {Object} store - Store info (name, address, phone, email)
  */
-const generateInvoicePDFContent = (doc, sale) => {
-  // --- Color palette ---
+const generateInvoicePDFContent = (doc, sale, store) => {
+  // --- Color palette (sample-inspired) ---
   const colors = {
-    primary: '#6366f1',
-    secondary: '#10b981',
-    accent: '#f59e0b',
-    danger: '#ef4444',
-    dark: '#1f2937',
-    light: '#f8fafc',
-    gray: '#e5e7eb',
-    white: '#fff',
-    text: '#111827',
-    textLight: '#6b7280',
+    primary: '#F15A29', // Orange highlight
+    dark: '#22223B',
+    light: '#F8F8F8',
+    gray: '#E5E7EB',
+    white: '#FFF',
+    text: '#22223B',
+    textLight: '#6B7280',
+    tableHeader: '#F15A29',
+    tableHeaderText: '#FFF',
+    tableRowAlt: '#F8F8F8',
+    totalBg: '#F15A29',
+    totalText: '#FFF',
   };
-  const margin = 30;
+  const margin = 40;
   const pageWidth = 595.28;
   const pageHeight = 841.89;
   const contentWidth = pageWidth - margin * 2;
+  let y = margin;
 
-  // --- Header with logo and company info ---
+  // --- Logo (top right) ---
   doc.save();
-  doc.circle(margin + 25, margin + 25, 20).fill(colors.primary);
-  doc.fillColor(colors.white).fontSize(18).font('Helvetica-Bold').text('SS', margin + 13, margin + 15);
+  doc.circle(pageWidth - margin - 30, y + 20, 20).fill(colors.primary);
+  doc.fillColor(colors.white).fontSize(12).font('Helvetica-Bold').text('LOGO', pageWidth - margin - 48, y + 10, {width: 36, align: 'center'});
   doc.restore();
-  doc.fillColor(colors.primary).fontSize(22).font('Helvetica-Bold').text('SMART SHOP', margin + 60, margin + 10);
-  doc.fontSize(10).fillColor(colors.textLight).font('Helvetica').text('Complete Inventory Management', margin + 60, margin + 35);
-  doc.fontSize(9).text('📞 +91 9876-543-210  |  📧 hello@smartshop.com', margin + 60, margin + 50);
-  doc.fontSize(9).text('🌐 www.smartshop.com', margin + 60, margin + 63);
 
-  // --- Invoice/Customer/Payment Details (single row) ---
-  let yPos = margin + 70;
-  doc.roundedRect(margin, yPos, contentWidth, 48, 8).fill(colors.white);
-  doc.fillColor(colors.text).fontSize(10).font('Helvetica-Bold').text('Invoice #', margin + 15, yPos + 8);
-  doc.font('Helvetica').text(sale.invoiceNumber, margin + 15, yPos + 22);
-  doc.font('Helvetica-Bold').text('Date', margin + 120, yPos + 8);
-  doc.font('Helvetica').text(new Date(sale.createdAt).toLocaleDateString('en-IN'), margin + 120, yPos + 22);
-  doc.font('Helvetica-Bold').text('Bill To', margin + 250, yPos + 8);
-  doc.font('Helvetica').text(sale.customerName, margin + 250, yPos + 22);
-  if (sale.customerPhone) doc.font('Helvetica').text(sale.customerPhone, margin + 250, yPos + 34);
-  doc.font('Helvetica-Bold').text('Payment', margin + 400, yPos + 8);
-  doc.font('Helvetica').text(sale.paymentMode.toUpperCase(), margin + 400, yPos + 22);
+  // --- Business Info (top left, dynamic from store) ---
+  doc.font('Helvetica-Bold').fontSize(22).fillColor(colors.text).text('INVOICE', margin, y);
+  y += 32;
+  doc.font('Helvetica').fontSize(10).fillColor(colors.text).text(store?.name || 'Business name', margin, y);
+  y += 14;
+  doc.text(store?.address || 'Business address', margin, y);
+  y += 14;
+  doc.text(store?.phone || 'Business phone', margin, y);
+  y += 14;
+  doc.text(store?.email || 'Business email', margin, y);
+  y += 14;
+  if (store?.website) {
+    doc.text(store.website, margin, y, {link: store.website, underline: true, color: colors.primary});
+    y += 14;
+  }
+  if (store?.description) {
+    doc.font('Helvetica-Oblique').fontSize(9).fillColor(colors.textLight).text(store.description, margin, y, {width: 250});
+    y += 14;
+  }
+  // Operating hours (if available)
+  if (store?.operatingHours) {
+    let hoursText = 'Hours: ';
+    const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+    const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    let hoursArr = [];
+    days.forEach((d, i) => {
+      const oh = store.operatingHours[d];
+      if (oh && oh.open && oh.close) {
+        hoursArr.push(`${dayLabels[i]}: ${oh.open}-${oh.close}`);
+      }
+    });
+    if (hoursArr.length > 0) {
+      doc.font('Helvetica').fontSize(9).fillColor(colors.textLight).text(hoursText + hoursArr.join(' | '), margin, y, {width: 300});
+      y += 14;
+    }
+  }
+  y += 10;
 
-  // --- Items Table ---
-  yPos += 60;
-  doc.roundedRect(margin, yPos, contentWidth, 28, 6).fill(colors.primary);
-  doc.fillColor(colors.white).fontSize(10).font('Helvetica-Bold')
-    .text('Item', margin + 15, yPos + 8)
-    .text('Qty', margin + 250, yPos + 8)
-    .text('Rate', margin + 320, yPos + 8)
-    .text('Total', margin + 400, yPos + 8);
-  yPos += 28;
+  // --- Bill To & Invoice Details Row ---
+  const leftX = margin;
+  const rightX = margin + 250;
+  let rowY = y;
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(colors.text).text('Bill to:', leftX, rowY);
+  doc.font('Helvetica').fontSize(10).fillColor(colors.text).text(sale.customerName || 'Buyer name/business name', leftX, rowY + 14);
+  doc.text(sale.customerAddress || 'Buyer address', leftX, rowY + 28);
+  doc.text(sale.customerPhone || 'Buyer phone number', leftX, rowY + 42);
+  doc.text(sale.customerEmail || 'Buyer email', leftX, rowY + 56);
+
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(colors.text).text('Invoice number:', rightX, rowY + 0);
+  doc.font('Helvetica').fontSize(10).fillColor(colors.text).text(sale.invoiceNumber, rightX + 110, rowY + 0);
+  doc.font('Helvetica-Bold').text('Invoice date:', rightX, rowY + 14);
+  doc.font('Helvetica').text(sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('en-IN') : 'MM/DD/YYYY', rightX + 110, rowY + 14);
+  doc.font('Helvetica-Bold').text('Payment due:', rightX, rowY + 28);
+  doc.font('Helvetica').text(sale.dueDate ? new Date(sale.dueDate).toLocaleDateString('en-IN') : (sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('en-IN') : 'MM/DD/YYYY'), rightX + 110, rowY + 28);
+  y += 80;
+
+  // --- Table Header ---
+  doc.roundedRect(margin, y, contentWidth, 22, 4).fill(colors.tableHeader);
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(colors.tableHeaderText)
+    .text('Item', margin + 8, y + 6)
+    .text('Quantity', margin + 200, y + 6)
+    .text('Price per unit', margin + 300, y + 6)
+    .text('Amount', margin + 420, y + 6);
+  y += 22;
+
+  // --- Table Rows ---
   sale.items.forEach((item, idx) => {
-    const rowColor = idx % 2 === 0 ? colors.light : colors.white;
-    doc.roundedRect(margin, yPos, contentWidth, 24, 0).fill(rowColor);
-    doc.fillColor(colors.text).fontSize(9).font('Helvetica-Bold').text(item.itemName, margin + 15, yPos + 7);
-    doc.font('Helvetica').fontSize(9).fillColor(colors.textLight);
-    doc.text(item.quantity.toString(), margin + 250, yPos + 7);
-    doc.text(`₹${item.unitPrice.toFixed(2)}`, margin + 320, yPos + 7);
-    doc.text(`₹${item.totalPrice.toFixed(2)}`, margin + 400, yPos + 7);
-    yPos += 24;
+    const rowColor = idx % 2 === 0 ? colors.white : colors.tableRowAlt;
+    doc.rect(margin, y, contentWidth, 20).fill(rowColor);
+    doc.font('Helvetica').fontSize(10).fillColor(colors.text)
+      .text(item.itemName, margin + 8, y + 6, {width: 180, ellipsis: true})
+      .text(item.quantity.toString(), margin + 200, y + 6)
+      .text(`₹${item.unitPrice.toFixed(2)}`, margin + 300, y + 6)
+      .text(`₹${item.totalPrice.toFixed(2)}`, margin + 420, y + 6);
+    y += 20;
   });
 
+  // --- Table Bottom Border ---
+  doc.moveTo(margin, y).lineTo(margin + contentWidth, y).strokeColor(colors.gray).lineWidth(1).stroke();
+  y += 8;
+
   // --- Totals Section ---
-  yPos += 10;
-  doc.roundedRect(margin, yPos, contentWidth, 60, 8).fill(colors.white);
-  let tY = yPos + 10;
-  doc.fontSize(10).font('Helvetica-Bold').fillColor(colors.text).text('Subtotal:', margin + 20, tY);
-  doc.font('Helvetica').text(`₹${sale.subtotal.toFixed(2)}`, margin + 120, tY);
-  tY += 14;
-  if (sale.discount > 0) {
-    doc.font('Helvetica-Bold').fillColor(colors.danger).text('Discount:', margin + 20, tY);
-    doc.font('Helvetica').text(`-₹${sale.discount.toFixed(2)}`, margin + 120, tY);
-    tY += 14;
-  }
-  if (sale.gst > 0) {
-    doc.font('Helvetica-Bold').fillColor(colors.text).text('GST:', margin + 20, tY);
-    doc.font('Helvetica').text(`₹${sale.gst.toFixed(2)}`, margin + 120, tY);
-    tY += 14;
-  }
-  doc.font('Helvetica-Bold').fillColor(colors.secondary).text('Total:', margin + 20, tY);
-  doc.font('Helvetica-Bold').fillColor(colors.secondary).text(`₹${sale.totalAmount.toFixed(2)}`, margin + 120, tY);
-  if (sale.savings > 0) {
-    doc.font('Helvetica-Bold').fillColor(colors.accent).text('You Saved:', margin + 250, yPos + 10);
-    doc.font('Helvetica-Bold').fillColor(colors.accent).text(`₹${sale.savings.toFixed(2)}`, margin + 340, yPos + 10);
-  }
+  let totalsX = margin + 300;
+  doc.font('Helvetica').fontSize(10).fillColor(colors.text)
+    .text('Subtotal', totalsX, y);
+  doc.text(`₹${sale.subtotal ? sale.subtotal.toFixed(2) : '0.00'}`, totalsX + 100, y, {align: 'right'});
+  y += 14;
+  doc.text(`Tax ${sale.gstRate ? sale.gstRate + '%' : '0.00%'}`, totalsX, y);
+  doc.text(`₹${sale.gst ? sale.gst.toFixed(2) : '0.00'}`, totalsX + 100, y, {align: 'right'});
+  y += 14;
+  doc.text('Fees', totalsX, y);
+  doc.text('₹0.00', totalsX + 100, y, {align: 'right'});
+  y += 14;
+  doc.text('Discounts', totalsX, y);
+  doc.text(`₹${sale.totalDiscount ? sale.totalDiscount.toFixed(2) : '0.00'}`, totalsX + 100, y, {align: 'right'});
+  y += 18;
+  // --- TOTAL Row ---
+  doc.roundedRect(totalsX, y, 140, 24, 4).fill(colors.totalBg);
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(colors.totalText).text('TOTAL', totalsX + 10, y + 6);
+  doc.text(`₹${sale.totalAmount ? sale.totalAmount.toFixed(2) : '0.00'}`, totalsX + 70, y + 6);
+  y += 36;
 
-  // --- QR code placeholder (for digital verification) ---
-  doc.save();
-  doc.roundedRect(pageWidth - margin - 70, yPos, 60, 60, 8).fill(colors.gray);
-  doc.fillColor(colors.textLight).fontSize(8).font('Helvetica').text('QR', pageWidth - margin - 50, yPos + 25);
-  doc.restore();
-
-  // --- Footer ---
-  doc.roundedRect(margin, pageHeight - 60, contentWidth, 40, 8).fill(colors.primary);
-  doc.fillColor(colors.white).fontSize(11).font('Helvetica-Bold').text('Thank you for your business!', margin + 20, pageHeight - 50);
-  doc.fontSize(8).font('Helvetica').fillColor(colors.light).text('For support: hello@smartshop.com | +91 9876-543-210', margin + 20, pageHeight - 35);
-  doc.fontSize(7).fillColor(colors.textLight).text(`Generated: ${new Date().toLocaleString('en-IN')}`, margin, pageHeight - 20);
-  doc.fontSize(7).fillColor(colors.textLight).text(`Invoice: ${sale.invoiceNumber}`, margin + 200, pageHeight - 20);
-  doc.fontSize(7).fillColor(colors.textLight).text('Page 1 of 1', pageWidth - margin - 50, pageHeight - 20);
+  // --- Terms and Conditions ---
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(colors.text).text('Terms and conditions', margin, y);
+  doc.font('Helvetica').fontSize(9).fillColor(colors.textLight).text('Goods once sold will not be taken back or exchanged. Please retain this invoice for warranty/returns. For support, contact hello@smartshop.com', margin, y + 16, {width: contentWidth - 20});
 };
 
 module.exports = {

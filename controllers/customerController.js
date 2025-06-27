@@ -1,5 +1,12 @@
 const { User } = require('../models');
 const { catchAsync } = require('../middleware/errorHandler');
+const { Parser } = require('json2csv');
+const ExcelJS = require('exceljs');
+const PDFDocument = require('pdfkit');
+const Customer = require('../models/User'); // Assuming customers are in User model with role: 'customer'
+const fs = require('fs');
+const path = require('path');
+const { logAudit } = require('../utils/auditLogService');
 
 // @desc    Search customers with typeahead support
 // @route   GET /api/v1/customers/search
@@ -264,7 +271,7 @@ const getRecentCustomers = catchAsync(async (req, res) => {
   });
 });
 
-// @desc    Create new customer
+// @desc    Create new customer (supports walk-in without phone)
 // @route   POST /api/v1/customers
 // @access  Private (Staff and above)
 const createCustomer = catchAsync(async (req, res) => {
@@ -276,34 +283,42 @@ const createCustomer = catchAsync(async (req, res) => {
     whatsappNumber,
     sameAsWhatsapp = false,
     address,
-    notes
+    notes,
+    isWalkIn = false // NEW: flag for walk-in
   } = req.body;
 
-  // Input validation
-  if (!firstName || !lastName || !phoneNumber) {
+  // Allow walk-in customers without phone number
+  if (!firstName || !lastName || (!phoneNumber && !isWalkIn)) {
     return res.status(400).json({
       success: false,
-      error: 'First name, last name, and phone number are required'
+      error: 'First name, last name, and phone number are required unless walk-in.'
     });
   }
 
-  // Auto-fill phone number if "same as WhatsApp" is checked
+  // If walk-in, use default phone and label
   let finalPhoneNumber = phoneNumber;
-  if (sameAsWhatsapp && whatsappNumber) {
+  let walkInLabel = false;
+  if (isWalkIn && !phoneNumber) {
+    finalPhoneNumber = '0000000000';
+    walkInLabel = true;
+  } else if (sameAsWhatsapp && whatsappNumber) {
     finalPhoneNumber = whatsappNumber;
   }
 
   // Normalize phone number (remove spaces, dashes, etc.)
-  const normalizedPhone = finalPhoneNumber.replace(/\D/g, '');
+  const normalizedPhone = finalPhoneNumber ? finalPhoneNumber.replace(/\D/g, '') : '';
   
-  // Check if customer already exists (by phone or email)
-  const existingCustomer = await User.findOne({
-    role: 'customer',
-    $or: [
-      { phoneNumber: { $regex: normalizedPhone, $options: 'i' } },
-      ...(email ? [{ email: email.toLowerCase() }] : [])
-    ]
-  });
+  // Check if customer already exists (by phone or email), skip for walk-in default phone
+  let existingCustomer = null;
+  if (!walkInLabel) {
+    existingCustomer = await User.findOne({
+      role: 'customer',
+      $or: [
+        { phoneNumber: { $regex: normalizedPhone, $options: 'i' } },
+        ...(email ? [{ email: email.toLowerCase() }] : [])
+      ]
+    });
+  }
 
   if (existingCustomer) {
     return res.status(409).json({
@@ -343,13 +358,19 @@ const createCustomer = catchAsync(async (req, res) => {
     }
   };
 
+  // Add walk-in label if applicable
+  if (walkInLabel) {
+    customerData.profile.isWalkIn = true;
+    customerData.profile.walkInLabel = 'Walk-In';
+  }
+
   // Add email if provided
   if (email && email.trim()) {
     customerData.email = email.toLowerCase().trim();
   } else {
     // Generate a placeholder email if not provided
     const timestamp = Date.now();
-    customerData.email = `customer.${normalizedPhone}.${timestamp}@placeholder.local`;
+    customerData.email = `customer.${normalizedPhone || 'walkin'}.${timestamp}@placeholder.local`;
     customerData.isEmailVerified = false;
   }
 
@@ -380,6 +401,15 @@ const createCustomer = catchAsync(async (req, res) => {
       displayText: `${populatedCustomer.firstName} ${populatedCustomer.lastName} (${populatedCustomer.phoneNumber})`,
       tempPassword: tempPassword // Send temp password in response (in real app, send via SMS/email)
     };
+
+    // Log customer creation
+    await logAudit({
+      userId: req.user.id,
+      action: 'create',
+      targetType: 'customer',
+      targetId: savedCustomer._id,
+      details: { createdBy: req.user.id, customer: enrichedCustomer }
+    });
 
     // Log customer creation
     console.log(`👤 New Customer Created: ${enrichedCustomer.fullName} by ${req.user.firstName} ${req.user.lastName}`);
@@ -510,11 +540,58 @@ const quickCreateCustomer = catchAsync(async (req, res) => {
   return createCustomer(req, res);
 });
 
+/**
+ * Export customers as CSV, XLSX, or PDF
+ * @route GET /customers/export?format=csv|xlsx|pdf
+ * @access Admin/Owner only
+ */
+const exportCustomers = async (req, res) => {
+  const { format = 'csv' } = req.query;
+  const customers = await Customer.find({ role: 'customer' }).lean();
+  if (!customers || customers.length === 0) {
+    return res.status(404).json({ success: false, message: 'No customers found' });
+  }
+  // Prepare data
+  const exportFields = ['firstName', 'lastName', 'phoneNumber', 'email', 'whatsappNumber', 'isActive', 'createdAt'];
+  const data = customers.map(c => exportFields.reduce((obj, key) => { obj[key] = c[key] || ''; return obj; }, {}));
+
+  if (format === 'csv') {
+    const parser = new Parser({ fields: exportFields });
+    const csv = parser.parse(data);
+    res.header('Content-Type', 'text/csv');
+    res.attachment('customers.csv');
+    return res.send(csv);
+  } else if (format === 'xlsx') {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Customers');
+    worksheet.columns = exportFields.map(f => ({ header: f, key: f }));
+    worksheet.addRows(data);
+    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.attachment('customers.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
+  } else if (format === 'pdf') {
+    const doc = new PDFDocument({ margin: 30, size: 'A4' });
+    res.header('Content-Type', 'application/pdf');
+    res.attachment('customers.pdf');
+    doc.pipe(res);
+    doc.fontSize(18).text('Customer List', { align: 'center' });
+    doc.moveDown();
+    data.forEach((row, idx) => {
+      doc.fontSize(12).text(`${idx + 1}. ${row.firstName} ${row.lastName} | ${row.phoneNumber} | ${row.email} | ${row.isActive ? 'Active' : 'Inactive'}`);
+    });
+    doc.end();
+  } else {
+    return res.status(400).json({ success: false, message: 'Invalid format. Use csv, xlsx, or pdf.' });
+  }
+};
+
 module.exports = {
   searchCustomers,
   getCustomerById,
   getRecentCustomers,
   createCustomer,
   checkCustomerByPhone,
-  quickCreateCustomer
+  quickCreateCustomer,
+  exportCustomers
 };

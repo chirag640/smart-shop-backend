@@ -94,6 +94,11 @@ const storeSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
+  staffPermissions: {
+    canAddExpenses: { type: Boolean, default: false },
+    canEditInventory: { type: Boolean, default: false },
+    canViewCost: { type: Boolean, default: false }
+  },
   settings: {
     currency: {
       type: String,

@@ -346,6 +346,21 @@ const inventoryItemSchema = new mongoose.Schema({
   deletedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  },
+  
+  deviceId: {
+    type: String,
+    trim: true,
+    index: true,
+    default: null,
+    description: 'Device that last updated this record (for sync)'
+  },
+  syncVersion: {
+    type: Number,
+    required: true,
+    default: 1,
+    min: 1,
+    description: 'Incremented on every update for sync conflict resolution'
   }
 }, {
   timestamps: true, // Adds createdAt and updatedAt automatically

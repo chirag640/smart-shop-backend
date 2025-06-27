@@ -7,7 +7,8 @@ const {
   getInvoicePDF,
   getCustomerHistory,
   getAvailableStores,
-  sendInvoiceNotifications
+  sendInvoiceNotifications,
+  exportBills
 } = require('../controllers/billingController');
 const { authMiddleware, authorize } = require('../middlewares/auth');
 const { body, validationResult } = require('express-validator');
@@ -170,5 +171,8 @@ router.post('/invoices/:invoiceNumber/send',
   
   sendInvoiceNotifications
 );
+
+// Export bills/invoices (admin/owner only)
+router.get('/export', authorize('admin', 'owner', 'superadmin'), exportBills);
 
 module.exports = router;

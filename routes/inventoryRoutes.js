@@ -8,9 +8,10 @@ const {
   restoreItem,
   updateStock,
   getSelectableItems,
-  getItemMetadata
+  getItemMetadata,
+  exportInventory
 } = require('../controllers/inventoryController');
-const { authMiddleware, authorize } = require('../middlewares/auth');
+const { authMiddleware, authorize, roleMiddleware } = require('../middlewares/auth');
 const { validateInventoryItem, validateStockUpdate, validateInventoryQuery } = require('../middleware/validation');
 const { handleImageUpload, optionalImageUpload } = require('../middleware/upload');
 const { fileUploadSecurity } = require('../middleware/security');
@@ -238,7 +239,7 @@ router.get('/items/:id',
 router.post('/items', 
   uploadLimiter,
   authMiddleware,
-  authorize('admin', 'manager', 'superadmin'),
+  roleMiddleware('owner'),
   optionalImageUpload,
   fileUploadSecurity,
   validateInventoryItem,
@@ -250,7 +251,7 @@ router.post('/items',
 router.put('/items/:id',
   uploadLimiter,
   authMiddleware,
-  authorize('admin', 'manager', 'superadmin'),
+  roleMiddleware('owner'),
   optionalImageUpload,
   fileUploadSecurity,
   validateInventoryItem,
@@ -308,9 +309,8 @@ router.put('/items/:id',
  *         $ref: '#/components/responses/Forbidden'
  */
 router.delete('/items/:id',
-  strictLimiter,
   authMiddleware,
-  authorize('admin', 'manager', 'superadmin'),
+  roleMiddleware('owner'),
   catchAsync(deleteItem)
 );
 
@@ -415,5 +415,8 @@ router.get('/out-of-stock',
     });
   })
 );
+
+// Export inventory items (admin/owner only)
+router.get('/export', authorize('admin', 'owner', 'superadmin'), exportInventory);
 
 module.exports = router;

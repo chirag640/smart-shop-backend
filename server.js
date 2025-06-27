@@ -45,7 +45,24 @@ const storeRoutes = require('./routes/stores');
 const categoryRoutes = require('./routes/categories');
 const customerRoutes = require('./routes/customers');
 const billingRoutes = require('./routes/billing');
-
+const partnerRoutes = require('./routes/partners');
+const expenseRoutes = require('./routes/expenses');
+const reportRoutes = require('./routes/reports');
+const profitLossRoutes = require('./routes/profitLoss');
+const inventoryReportRoutes = require('./routes/inventoryReports');
+const salesCalendarRoutes = require('./routes/salesCalendar');
+const customerReportRoutes = require('./routes/customerReports');
+const returnsReportRoutes = require('./routes/returnsReport');
+const syncRoutes = require('./routes/sync');
+const settingsRoutes = require('./routes/settings');
+const usersRoutes = require('./routes/users');
+const notificationsRoutes = require('./routes/notifications');
+const fcmRoutes = require('./routes/fcm');
+const settingsAppRoutes = require('./routes/settingsApp');
+const backupRoutes = require('./routes/backup');
+const auditRoutes = require('./routes/audit');
+const pinRoutes = require('./routes/pin');
+const devicesRoutes = require('./routes/devices');
 
 // Basic route
 app.get('/', (req, res) => {
@@ -59,6 +76,24 @@ app.use('/api/v1/stores', storeRoutes);
 app.use('/api/v1/categories', categoryRoutes);
 app.use('/api/v1/customers', customerRoutes);
 app.use('/api/v1/billing', billingRoutes);
+app.use('/api/v1/partners', partnerRoutes);
+app.use('/api/v1/expenses', expenseRoutes);
+app.use('/api/v1/reports', reportRoutes);
+app.use('/api/v1/reports', profitLossRoutes);
+app.use('/api/v1/reports/inventory', inventoryReportRoutes);
+app.use('/api/v1/reports/sales-calendar', salesCalendarRoutes);
+app.use('/api/v1/reports/customers', customerReportRoutes);
+app.use('/api/v1/reports', returnsReportRoutes);
+app.use('/api/v1/sync', syncRoutes);
+app.use('/api/v1/settings', settingsRoutes);
+app.use('/api/v1/users', usersRoutes);
+app.use('/api/v1/notifications', notificationsRoutes);
+app.use('/api/v1/fcm', fcmRoutes);
+app.use('/api/v1/app-settings', settingsAppRoutes);
+app.use('/api/v1/backup', backupRoutes);
+app.use('/api/v1/audit', auditRoutes);
+app.use('/api/v1/pin', pinRoutes);
+app.use('/api/v1/devices', devicesRoutes);
 
 // Error handler middleware (must be last)
 app.use(errorHandler);

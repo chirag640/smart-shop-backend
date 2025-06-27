@@ -114,6 +114,49 @@ const cleanupOTPs = async (req, res, next) => {
   }
 };
 
+// Middleware: Only allow staff to create customers during billing
+const staffCreateCustomerRestriction = (req, res, next) => {
+  if (req.user && req.user.role === 'staff') {
+    // Only allow if request comes from billing context (e.g., a special header or query param)
+    // You can adjust this logic as needed for your frontend
+    if (req.headers['x-billing-context'] === 'true' || req.query.billing === 'true') {
+      return next();
+    }
+    return res.status(403).json({
+      success: false,
+      error: 'Staff can only create customers during billing.'
+    });
+  }
+  next();
+};
+
+// Middleware: Staff can only view customer details (no edit/delete)
+const staffViewOnly = (req, res, next) => {
+  if (req.user && req.user.role === 'staff') {
+    // Only allow GET requests
+    if (req.method !== 'GET') {
+      return res.status(403).json({
+        success: false,
+        error: 'Staff can only view customer details.'
+      });
+    }
+  }
+  next();
+};
+
+// Role middleware factory: roleMiddleware('owner'), roleMiddleware('staff'), etc.
+const roleMiddleware = (role) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'User not authenticated' });
+    }
+    if (req.user.role !== role) {
+      return res.status(403).json({ success: false, error: `Only ${role} can access this resource` });
+    }
+    next();
+  };
+};
+
 module.exports = {
   authMiddleware,
   authorize,
@@ -121,5 +164,8 @@ module.exports = {
   adminOnly,
   managerAndAbove,
   staffAndAbove,
-  cleanupOTPs
+  cleanupOTPs,
+  staffCreateCustomerRestriction,
+  staffViewOnly,
+  roleMiddleware
 };

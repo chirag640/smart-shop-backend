@@ -12,6 +12,10 @@ const {
   buildPaginationOptions,
   executePaginatedQuery
 } = require('../middleware/validation');
+const { Parser } = require('json2csv');
+const ExcelJS = require('exceljs');
+const PDFDocument = require('pdfkit');
+const { logAudit } = require('../utils/auditLogService');
 
 // @desc    Create new inventory item
 // @route   POST /api/v1/inventory/items
@@ -127,6 +131,15 @@ const createItem = async (req, res) => {
       .populate('storeId', 'name location')
       .populate('createdBy', 'firstName lastName email')
       .populate('category', 'name');
+
+    // Log inventory item creation
+    await logAudit({
+      userId: req.user.id,
+      action: 'create',
+      targetType: 'inventory',
+      targetId: newItem._id,
+      details: { createdBy: req.user.id, item: newItem }
+    });
 
     res.status(201).json({
       success: true,
@@ -1060,6 +1073,66 @@ const getItemMetadata = async (req, res) => {
   }
 };
 
+/**
+ * Export inventory items as CSV, XLSX, or PDF
+ * @route GET /inventory/export?format=csv|xlsx|pdf
+ * @access Admin/Owner only
+ */
+const exportInventory = async (req, res) => {
+  const { format = 'csv' } = req.query;
+  const items = await InventoryItem.find({}).lean();
+  if (!items || items.length === 0) {
+    return res.status(404).json({ success: false, message: 'No inventory items found' });
+  }
+  // Prepare data
+  const exportFields = ['name', 'brand', 'sku', 'barcode', 'stockQty', 'minStockLevel', 'maxStockLevel', 'sellPrice', 'mrpPrice', 'purchasePrice', 'category', 'status', 'createdAt'];
+  const data = items.map(i => ({
+    name: i.name,
+    brand: i.brand,
+    sku: i.sku,
+    barcode: i.barcode,
+    stockQty: i.stockQty,
+    minStockLevel: i.minStockLevel,
+    maxStockLevel: i.maxStockLevel,
+    sellPrice: i.sellPrice,
+    mrpPrice: i.mrpPrice,
+    purchasePrice: i.purchasePrice,
+    category: (i.category && i.category.name) || i.category || '',
+    status: i.status || '',
+    createdAt: i.createdAt
+  }));
+
+  if (format === 'csv') {
+    const parser = new Parser({ fields: exportFields });
+    const csv = parser.parse(data);
+    res.header('Content-Type', 'text/csv');
+    res.attachment('inventory.csv');
+    return res.send(csv);
+  } else if (format === 'xlsx') {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Inventory');
+    worksheet.columns = exportFields.map(f => ({ header: f, key: f }));
+    worksheet.addRows(data);
+    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.attachment('inventory.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
+  } else if (format === 'pdf') {
+    const doc = new PDFDocument({ margin: 30, size: 'A4' });
+    res.header('Content-Type', 'application/pdf');
+    res.attachment('inventory.pdf');
+    doc.pipe(res);
+    doc.fontSize(18).text('Inventory List', { align: 'center' });
+    doc.moveDown();
+    data.forEach((row, idx) => {
+      doc.fontSize(12).text(`${idx + 1}. ${row.name} | ${row.brand} | ${row.sku} | ${row.stockQty} | ₹${row.sellPrice} | ${row.status}`);
+    });
+    doc.end();
+  } else {
+    return res.status(400).json({ success: false, message: 'Invalid format. Use csv, xlsx, or pdf.' });
+  }
+};
+
 // Export middleware and controllers
 module.exports = {
   createItem,
@@ -1070,5 +1143,6 @@ module.exports = {
   restoreItem,
   updateStock,
   getSelectableItems,
-  getItemMetadata
+  getItemMetadata,
+  exportInventory
 };

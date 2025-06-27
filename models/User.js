@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
 const userSchema = new mongoose.Schema({
   // Basic Information
@@ -48,10 +49,10 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     enum: {
-      values: ['customer', 'staff', 'manager', 'admin'],
+      values: ['owner', 'admin', 'manager', 'staff', 'customer'],
       message: 'Invalid user role'
     },
-    default: 'admin',
+    default: 'staff',
     index: true
   },
   
@@ -279,6 +280,30 @@ const userSchema = new mongoose.Schema({
   lastUpdatedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  },
+  
+  deviceId: {
+    type: String,
+    trim: true,
+    index: true,
+    default: null,
+    description: 'Device that last updated this record (for sync)'
+  },
+  syncVersion: {
+    type: Number,
+    required: true,
+    default: 1,
+    min: 1,
+    description: 'Incremented on every update for sync conflict resolution'
+  },
+  
+  pinHash: {
+    type: String,
+    default: null
+  },
+  pinDeviceId: {
+    type: String,
+    default: null
   }
 }, {
   timestamps: true,
@@ -327,6 +352,21 @@ userSchema.pre('save', async function(next) {
   } catch (error) {
     next(error);
   }
+});
+
+userSchema.pre('save', function(next) {
+  if (this.isModified('email')) {
+    this.email = encryptField(this.email);
+  }
+  if (this.isModified('phoneNumber')) {
+    this.phoneNumber = encryptField(this.phoneNumber);
+  }
+  next();
+});
+
+userSchema.post('init', function(doc) {
+  if (doc.email) doc.email = decryptField(doc.email);
+  if (doc.phoneNumber) doc.phoneNumber = decryptField(doc.phoneNumber);
 });
 
 // Instance methods
@@ -409,3 +449,19 @@ userSchema.statics.findByRole = function(role, storeId = null) {
 const User = mongoose.model('User', userSchema);
 
 module.exports = User;
+
+function encryptField(value) {
+  if (!value) return value;
+  const cipher = crypto.createCipheriv('aes-256-cbc', process.env.FIELD_ENCRYPTION_KEY, process.env.FIELD_ENCRYPTION_IV);
+  let encrypted = cipher.update(value, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return encrypted;
+}
+
+function decryptField(value) {
+  if (!value) return value;
+  const decipher = crypto.createDecipheriv('aes-256-cbc', process.env.FIELD_ENCRYPTION_KEY, process.env.FIELD_ENCRYPTION_IV);
+  let decrypted = decipher.update(value, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}

@@ -5,9 +5,19 @@ const {
   getRecentCustomers,
   createCustomer,
   checkCustomerByPhone,
-  quickCreateCustomer
+  quickCreateCustomer,
+  exportCustomers
 } = require('../controllers/customerController');
-const { authMiddleware, authorize } = require('../middlewares/auth');
+const { 
+  authMiddleware, 
+  authorize, 
+  checkOwnerOrStaff, 
+  adminOnly, 
+  managerAndAbove, 
+  staffAndAbove, 
+  staffCreateCustomerRestriction, 
+  staffViewOnly 
+} = require('../middlewares/auth');
 const { 
   validateCustomerCreation, 
   validateQuickCustomerCreation, 
@@ -24,6 +34,9 @@ router.use(generalLimiter);
 // All customer routes require authentication and staff+ privileges
 router.use(authMiddleware);
 router.use(authorize('staff', 'manager', 'admin', 'superadmin'));
+
+// Staff can only view (GET) customer details, not edit/delete
+router.use(staffViewOnly);
 
 /**
  * @swagger
@@ -321,7 +334,7 @@ router.get('/:id', catchAsync(getCustomerById));
  *       400:
  *         $ref: '#/components/responses/BadRequest'
  */
-router.post('/', validateCustomerCreation, catchAsync(createCustomer));
+router.post('/', staffCreateCustomerRestriction, validateCustomerCreation, catchAsync(createCustomer));
 
 /**
  * @swagger
@@ -364,6 +377,9 @@ router.post('/', validateCustomerCreation, catchAsync(createCustomer));
  *       400:
  *         $ref: '#/components/responses/BadRequest'
  */
-router.post('/quick-create', validateQuickCustomerCreation, catchAsync(quickCreateCustomer));
+router.post('/quick-create', staffCreateCustomerRestriction, validateQuickCustomerCreation, catchAsync(quickCreateCustomer));
+
+// Export customers (admin/owner only)
+router.get('/export', adminOnly, catchAsync(exportCustomers));
 
 module.exports = router;

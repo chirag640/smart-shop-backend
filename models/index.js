@@ -31,6 +31,7 @@ const InventoryItem = require('./InventoryItem');
 const OTP = require('./OTP');
 const OTPRateLimit = require('./OTPRateLimit');
 const Sale = require('./Sale');
+const BusinessPartner = require('./BusinessPartner');
 
 // Export all models
 module.exports = {
@@ -41,5 +42,6 @@ module.exports = {
   InventoryItem,
   OTP,
   OTPRateLimit,
-  Sale
+  Sale,
+  BusinessPartner
 };

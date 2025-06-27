@@ -8,6 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const { InvoiceNotificationService } = require('../utils/invoiceNotificationService');
 const Store = require('../models/Store');
+const { Parser } = require('json2csv');
+const ExcelJS = require('exceljs');
+const { logAudit } = require('../utils/auditLogService');
 
 /**
  * Generate next invoice number
@@ -345,6 +348,15 @@ const recordSale = async (req, res) => {
             }
           })
         }
+      });
+
+      // Log bill/sale creation
+      await logAudit({
+        userId: req.user.id,
+        action: 'create',
+        targetType: 'bill',
+        targetId: sale._id,
+        details: { createdBy: req.user.id, sale }
       });
 
     } catch (error) {
@@ -1059,6 +1071,60 @@ const sendInvoiceNotifications = async (req, res) => {
 };
 
 /**
+ * Export bills/invoices as CSV, XLSX, or PDF
+ * @route GET /billing/export?format=csv|xlsx|pdf
+ * @access Admin/Owner only
+ */
+const exportBills = async (req, res) => {
+  const { format = 'csv' } = req.query;
+  const bills = await Sale.find({}).lean();
+  if (!bills || bills.length === 0) {
+    return res.status(404).json({ success: false, message: 'No bills found' });
+  }
+  // Prepare data
+  const exportFields = ['invoiceNumber', 'customerName', 'customerPhone', 'totalAmount', 'paymentMode', 'createdAt', 'status'];
+  const data = bills.map(b => ({
+    invoiceNumber: b.invoiceNumber,
+    customerName: b.customerName || (b.customer && b.customer.name) || '',
+    customerPhone: b.customerPhone || (b.customer && b.customer.phoneNumber) || '',
+    totalAmount: b.totalAmount,
+    paymentMode: b.paymentMode,
+    createdAt: b.createdAt,
+    status: b.status || ''
+  }));
+
+  if (format === 'csv') {
+    const parser = new Parser({ fields: exportFields });
+    const csv = parser.parse(data);
+    res.header('Content-Type', 'text/csv');
+    res.attachment('bills.csv');
+    return res.send(csv);
+  } else if (format === 'xlsx') {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Bills');
+    worksheet.columns = exportFields.map(f => ({ header: f, key: f }));
+    worksheet.addRows(data);
+    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.attachment('bills.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
+  } else if (format === 'pdf') {
+    const doc = new PDFDocument({ margin: 30, size: 'A4' });
+    res.header('Content-Type', 'application/pdf');
+    res.attachment('bills.pdf');
+    doc.pipe(res);
+    doc.fontSize(18).text('Bills/Invoices List', { align: 'center' });
+    doc.moveDown();
+    data.forEach((row, idx) => {
+      doc.fontSize(12).text(`${idx + 1}. ${row.invoiceNumber} | ${row.customerName} | ${row.customerPhone} | ₹${row.totalAmount} | ${row.paymentMode} | ${row.status}`);
+    });
+    doc.end();
+  } else {
+    return res.status(400).json({ success: false, message: 'Invalid format. Use csv, xlsx, or pdf.' });
+  }
+};
+
+/**
  * Generate PDF buffer for invoice (helper function)
  */
 const generateInvoicePDFBuffer = async (sale) => {
@@ -1232,5 +1298,6 @@ module.exports = {
   getInvoicePDF,
   getCustomerHistory,
   getAvailableStores,
-  sendInvoiceNotifications
+  sendInvoiceNotifications,
+  exportBills
 };

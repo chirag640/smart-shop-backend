@@ -49,14 +49,14 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     enum: {
-      values: ['owner', 'admin', 'manager', 'staff', 'customer'],
+      values: ['owner', 'staff', 'customer'],
       message: 'Invalid user role'
     },
     default: 'staff',
     index: true
   },
   
-  // Store Association (for staff, managers, admins)
+  // Store Association (for staff and owners)
   storeId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Store',
@@ -64,12 +64,12 @@ const userSchema = new mongoose.Schema({
     validate: {
       validator: function(value) {
         // Store ID is required for non-customer roles
-        if (['staff', 'manager', 'admin'].includes(this.role)) {
+        if (['staff', 'owner'].includes(this.role)) {
           return value != null;
         }
         return true;
       },
-      message: 'Store ID is required for staff, manager, and admin roles'
+      message: 'Store ID is required for staff and owner roles'
     }
   },
   

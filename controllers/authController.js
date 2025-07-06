@@ -16,12 +16,12 @@ const register = catchAsync(async (req, res, next) => {
   }
 
   // Validate role and store association
-  if (role && !['customer', 'staff', 'manager'].includes(role)) {
+  if (role && !['customer', 'staff', 'owner'].includes(role)) {
     return next(new AppError('Invalid role specified', 400));
   }
 
-  if (role && ['staff', 'manager'].includes(role) && !storeId) {
-    return next(new AppError('Store ID is required for staff and manager roles', 400));
+  if (role && ['staff', 'owner'].includes(role) && !storeId) {
+    return next(new AppError('Store ID is required for staff and owner roles', 400));
   }
 
   // Store registration data temporarily in OTP record

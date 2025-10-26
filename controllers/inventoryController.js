@@ -147,7 +147,8 @@ const createItem = async (req, res) => {
       data: populatedItem
     });
   } catch (error) {
-    console.error('Create item error:', error);
+  const logger = require('../utils/logger');
+  logger.error({ err: error }, 'Create item error');
     
     // Handle specific validation errors
     if (error.name === 'ValidationError') {
@@ -352,7 +353,8 @@ const getItems = async (req, res) => {
       meta
     });
   } catch (error) {
-    console.error('Get items error:', error);
+  const logger = require('../utils/logger');
+  logger.error({ err: error }, 'Get items error');
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to retrieve inventory items'
@@ -408,7 +410,8 @@ const getItemById = async (req, res) => {
       data: itemWithHistory
     });
   } catch (error) {
-    console.error('Get item by ID error:', error);
+  const logger = require('../utils/logger');
+  logger.error({ err: error }, 'Get item by ID error');
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to retrieve inventory item'
@@ -470,7 +473,8 @@ const updateItem = async (req, res) => {
           updateData.isDefaultImage = true;
           updateData.imageMetadata = null;
           
-          console.log('🗑️ Image removed, set to default');
+          const logger = require('../utils/logger');
+          logger.info('Image removed, set to default');
         } else if (req.file) {
           // Upload new image
           const imageData = await handleImageUploadUtil(
@@ -488,10 +492,12 @@ const updateItem = async (req, res) => {
             updateData.imageMetadata = imageData.imageMetadata;
           }
           
-          console.log(`📷 Image updated successfully`);
+          const logger = require('../utils/logger');
+          logger.info('Image updated successfully');
         }
       } catch (imageError) {
-        console.warn('Image update failed, continuing with other updates:', imageError);
+  const logger = require('../utils/logger');
+  logger.warn({ err: imageError }, 'Image update failed, continuing with other updates');
         // Don't fail the entire update if image handling fails
       }
     }    // Handle other data transformations with enhanced validation
@@ -506,7 +512,8 @@ const updateItem = async (req, res) => {
       try {
         updateData.supplier = JSON.parse(updateData.supplier);
       } catch (e) {
-        console.warn('Invalid supplier JSON, skipping supplier update');
+  const logger = require('../utils/logger');
+  logger.warn('Invalid supplier JSON, skipping supplier update');
         delete updateData.supplier;
       }
     }
@@ -584,7 +591,8 @@ const updateItem = async (req, res) => {
       data: updatedItem
     });
   } catch (error) {
-    console.error('Update item error:', error);
+  const logger = require('../utils/logger');
+  logger.error({ err: error }, 'Update item error');
     
     // Handle specific validation errors
     if (error.name === 'ValidationError') {
@@ -649,13 +657,15 @@ const deleteItem = async (req, res) => {
       if (item.imagePublicId && !item.isDefaultImage) {
         try {
           const deleteResult = await deleteFromCloudinary(item.imagePublicId);
+          const logger = require('../utils/logger');
           if (deleteResult.success) {
-            console.log('🗑️ Image deleted from Cloudinary during permanent delete');
+            logger.info('Image deleted from Cloudinary during permanent delete');
           } else {
-            console.warn('Failed to delete image from Cloudinary:', deleteResult.message);
+            logger.warn({ message: deleteResult.message }, 'Failed to delete image from Cloudinary');
           }
         } catch (cloudinaryError) {
-          console.warn('Cloudinary deletion error during permanent delete:', cloudinaryError);
+          const logger = require('../utils/logger');
+          logger.warn({ err: cloudinaryError }, 'Cloudinary deletion error during permanent delete');
         }
       }
 
@@ -680,7 +690,8 @@ const deleteItem = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Delete item error:', error);
+  const logger = require('../utils/logger');
+  logger.error({ err: error }, 'Delete item error');
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to delete inventory item'
@@ -723,7 +734,8 @@ const restoreItem = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Restore item error:', error);
+  const logger = require('../utils/logger');
+  logger.error({ err: error }, 'Restore item error');
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to restore inventory item'
@@ -820,7 +832,8 @@ const updateStock = async (req, res) => {
       timestamp: new Date()
     };
     
-    console.log('📦 Stock Movement:', stockMovementLog);
+  const logger = require('../utils/logger');
+  logger.info({ stockMovementLog }, 'Stock Movement');
 
     res.status(200).json({
       success: true,
@@ -837,7 +850,8 @@ const updateStock = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Update stock error:', error);
+    const logger = require('../utils/logger');
+    logger.error({ err: error }, 'Update stock error');
     
     // Handle specific validation errors
     if (error.name === 'ValidationError') {
@@ -983,7 +997,8 @@ const getSelectableItems = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching selectable items:', error);
+    const logger = require('../utils/logger');
+    logger.error({ err: error }, 'Error fetching selectable items');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch selectable items',
@@ -1064,7 +1079,8 @@ const getItemMetadata = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching item metadata:', error);
+    const logger = require('../utils/logger');
+    logger.error({ err: error }, 'Error fetching item metadata');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch item metadata',

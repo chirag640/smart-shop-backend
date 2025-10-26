@@ -26,7 +26,8 @@ const authMiddleware = async (req, res, next) => {
 
       return next(); // Add return here to prevent further execution
     } catch (error) {
-      console.error(error);
+      const logger = require('../utils/logger');
+      logger.error({ err: error }, 'Token verification failed');
       return res.status(401).json({
         success: false,
         error: 'Not authorized, token failed'
@@ -109,7 +110,8 @@ const cleanupOTPs = async (req, res, next) => {
     }
     next();
   } catch (error) {
-    console.error('OTP cleanup failed:', error);
+    const logger = require('../utils/logger');
+    logger.error({ err: error }, 'OTP cleanup failed');
     next(); // Continue even if cleanup fails
   }
 };

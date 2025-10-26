@@ -5,7 +5,8 @@ const nodemailer = require('nodemailer');
 const createTransporter = async () => {
   // Check if Gmail SMTP credentials are available
   if (process.env.SMTP_EMAIL && process.env.SMTP_PASSWORD) {
-    console.log('🔧 Using Gmail SMTP for email service...');
+    const logger = require('./logger');
+    logger.info('Using Gmail SMTP for email service');
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'smtp.gmail.com',
       port: parseInt(process.env.SMTP_PORT) || 587,
@@ -18,7 +19,8 @@ const createTransporter = async () => {
   } else if (process.env.NODE_ENV === 'development') {
     // For development, create test account if no Gmail credentials provided
     if (!process.env.ETHEREAL_EMAIL || !process.env.ETHEREAL_PASSWORD) {
-      console.log('🔧 Creating test email account for development...');
+      const logger = require('./logger');
+      logger.debug('Creating test email account for development');
       const testAccount = await nodemailer.createTestAccount();
       return nodemailer.createTransport({
         host: 'smtp.ethereal.email',
@@ -236,20 +238,23 @@ const sendOTPEmail = async (email, otp) => {
 
     const info = await transporter.sendMail(mailOptions);
     
+    const logger = require('./logger');
     if (process.env.NODE_ENV === 'development') {
-      console.log(`📧 OTP for ${email}: ${otp}`);
-      console.log('Preview URL: %s', nodemailer.getTestMessageUrl(info));
+      logger.debug({ email, otp }, 'OTP generated (development only)');
+      logger.debug({ previewUrl: nodemailer.getTestMessageUrl(info) }, 'Nodemailer preview URL');
     }
-    
-    console.log(`✅ Email sent successfully to ${email}`);
+
+    logger.info({ to: email }, 'Email sent successfully');
     return true;
   } catch (error) {
-    console.error('❌ Email sending failed:', error.message);
+  const logger = require('./logger');
+  logger.error({ err: error }, 'Email sending failed');
     
     // For development, log the OTP and continue even if email fails
     if (process.env.NODE_ENV === 'development') {
-      console.log(`🚨 EMAIL SERVICE FAILED - Development OTP for ${email}: ${otp}`);
-      console.log('⚠️  Email service not configured properly, but OTP is shown above for testing');
+      const logger = require('./logger');
+      logger.warn({ email, otp }, 'EMAIL SERVICE FAILED - Development OTP (logged for testing)');
+      logger.warn('Email service not configured properly, but OTP is shown above for testing');
       return true; // Don't fail in development
     }
     
@@ -275,14 +280,17 @@ const sendWelcomeEmail = async (email, userData = {}) => {
     const info = await transporter.sendMail(mailOptions);
     
     if (process.env.NODE_ENV === 'development') {
-      console.log(`📧 Welcome email sent to ${email}`);
-      console.log('Preview URL: %s', nodemailer.getTestMessageUrl(info));
+        const logger = require('./logger');
+        logger.debug({ to: email }, 'Welcome email sent (development)');
+        logger.debug({ previewUrl: nodemailer.getTestMessageUrl(info) }, 'Nodemailer preview URL');
     }
     
-    console.log(`Welcome email sent successfully to ${email}`);
+  const logger = require('./logger');
+  logger.info({ to: email }, 'Welcome email sent successfully');
     return true;
   } catch (error) {
-    console.error('Welcome email sending failed:', error);
+  const logger = require('./logger');
+  logger.error({ err: error }, 'Welcome email sending failed');
     throw new Error('Failed to send welcome email');
   }
 };
@@ -304,14 +312,17 @@ const sendPasswordResetEmail = async (email, resetUrl) => {
     const info = await transporter.sendMail(mailOptions);
     
     if (process.env.NODE_ENV === 'development') {
-      console.log(`📧 Password reset email sent to ${email}`);
-      console.log('Preview URL: %s', nodemailer.getTestMessageUrl(info));
+  const logger = require('./logger');
+  logger.debug({ to: email }, 'Password reset email sent (development)');
+  logger.debug({ previewUrl: nodemailer.getTestMessageUrl(info) }, 'Nodemailer preview URL');
     }
     
-    console.log(`Password reset email sent successfully to ${email}`);
+  const logger = require('./logger');
+  logger.info({ to: email }, 'Password reset email sent successfully');
     return true;
   } catch (error) {
-    console.error('Password reset email sending failed:', error);
+  const logger = require('./logger');
+  logger.error({ err: error }, 'Password reset email sending failed');
     throw new Error('Failed to send password reset email');
   }
 };

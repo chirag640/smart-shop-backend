@@ -13,9 +13,11 @@ const configureCloudinary = () => {
     if (process.env.NODE_ENV !== 'development') {
       throw new Error('Cloudinary credentials are required in production');
     }
-    console.warn('⚠️  Cloudinary credentials not configured - image uploads will be disabled');
+      const logger = require('../utils/logger');
+      logger.warn('Cloudinary credentials not configured - image uploads will be disabled');
   } else {
-    console.log('✅ Cloudinary configured successfully');
+      const logger = require('../utils/logger');
+      logger.info('Cloudinary configured successfully');
   }
 };
 

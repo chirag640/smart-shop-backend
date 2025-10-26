@@ -21,11 +21,12 @@ const sendOTPSMS = async (phone, otp) => {
     const client = getTwilioClient();
     
     if (process.env.NODE_ENV === 'development' && !client) {
-      // For development without Twilio credentials, just log the OTP
-      console.log(`📱 OTP for ${phone}: ${otp}`);
-      console.log('⚠️  SMS not sent - Twilio credentials not configured for development');
-      return true;
-    }
+        // For development without Twilio credentials, just log the OTP
+        const logger = require('./logger');
+        logger.debug({ phone, otp }, 'OTP (development only) - Twilio not configured');
+        logger.warn('SMS not sent - Twilio credentials not configured for development');
+        return true;
+      }
     
     if (!client) {
       throw new Error('Twilio client not initialized');
@@ -37,19 +38,21 @@ const sendOTPSMS = async (phone, otp) => {
       to: phone
     });
     
-    console.log(`SMS sent successfully to ${phone}, SID: ${message.sid}`);
+    const logger = require('./logger');
+    logger.info({ phone, sid: message.sid }, 'SMS sent successfully');
     
     if (process.env.NODE_ENV === 'development') {
-      console.log(`📱 OTP for ${phone}: ${otp}`);
+      logger.debug({ phone, otp }, 'OTP (development only)');
     }
     
     return true;
   } catch (error) {
-    console.error('SMS sending failed:', error);
+    const logger = require('./logger');
+    logger.error({ err: error }, 'SMS sending failed');
     
     // In development, don't fail completely if SMS service is not configured
     if (process.env.NODE_ENV === 'development') {
-      console.log(`📱 OTP for ${phone}: ${otp} (SMS service error, showing OTP in console)`);
+      logger.warn({ phone, otp }, 'OTP (development only) - SMS service error');
       return true;
     }
     

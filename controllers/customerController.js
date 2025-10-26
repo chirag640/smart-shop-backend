@@ -411,8 +411,9 @@ const createCustomer = catchAsync(async (req, res) => {
       details: { createdBy: req.user.id, customer: enrichedCustomer }
     });
 
-    // Log customer creation
-    console.log(`👤 New Customer Created: ${enrichedCustomer.fullName} by ${req.user.firstName} ${req.user.lastName}`);
+  // Log customer creation
+  const logger = require('../utils/logger');
+  logger.info({ customerId: savedCustomer._id, createdBy: req.user.id, customerName: enrichedCustomer.fullName }, 'New customer created');
 
     res.status(201).json({
       success: true,

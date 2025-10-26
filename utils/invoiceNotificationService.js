@@ -7,15 +7,16 @@ const nodemailer = require('nodemailer');
 const twilio = require('twilio');
 const path = require('path');
 const fs = require('fs').promises;
+const logger = require('./logger');
 
 /**
  * WhatsApp Service using Twilio - DISABLED FOR NOW
  */
 class WhatsAppService {
   constructor() {
-    this.client = null;
-    // this.initialize(); // Commented out for now
-    console.log('📱 WhatsApp service disabled - using email only');
+  this.client = null;
+  // this.initialize(); // Commented out for now
+  logger.info('WhatsApp service disabled - using email only');
   }
 
   // initialize() {
@@ -35,7 +36,7 @@ class WhatsAppService {
    */
   async sendInvoicePDF(customerPhone, invoiceData, pdfBuffer) {
     // WhatsApp functionality temporarily disabled
-    console.log(`📱 WhatsApp disabled: Would send invoice ${invoiceData.invoiceNumber} to ${customerPhone}`);
+  logger.info({ invoiceNumber: invoiceData.invoiceNumber, phone: customerPhone }, 'WhatsApp disabled - would send invoice');
     
     return {
       success: false,
@@ -48,7 +49,7 @@ class WhatsAppService {
     try {
       if (!this.client) {
         if (process.env.NODE_ENV === 'development') {
-          console.log(`📱 WhatsApp (DEV): Invoice ${invoiceData.invoiceNumber} would be sent to ${customerPhone}`);
+      logger.info({ invoiceNumber: invoiceData.invoiceNumber, phone: customerPhone }, 'WhatsApp (DEV) - would send invoice');
           return { success: true, messageId: 'dev-mode', development: true };
         }
         throw new Error('WhatsApp service not configured');
@@ -68,7 +69,7 @@ class WhatsAppService {
         mediaUrl: pdfBuffer ? [await this.uploadPDFToTwilio(pdfBuffer, invoiceData.invoiceNumber)] : undefined
       });
 
-      console.log(`✅ WhatsApp invoice sent to ${customerPhone}, SID: ${message.sid}`);
+  logger.info({ phone: customerPhone, sid: message.sid }, 'WhatsApp invoice sent');
       
       return {
         success: true,
@@ -78,7 +79,7 @@ class WhatsAppService {
       };
 
     } catch (error) {
-      console.error('WhatsApp sending failed:', error);
+      logger.error({ err: error }, 'WhatsApp sending failed');
       return {
         success: false,
         error: error.message,
@@ -146,24 +147,22 @@ class InvoiceEmailService {
   }
   async initialize() {
     try {
-      console.log('📧 Initializing email service...');
-      console.log(`📧 SMTP_EMAIL: ${process.env.SMTP_EMAIL ? '***SET***' : 'Not configured'}`);
-      console.log(`📧 SMTP_PASSWORD: ${process.env.SMTP_PASSWORD ? '***SET***' : 'Not configured'}`);
-      console.log(`📧 NODE_ENV: ${process.env.NODE_ENV || 'Not set'}`);
+  logger.info('Initializing email service');
+  logger.debug({ smtpEmailSet: !!process.env.SMTP_EMAIL, smtpPasswordSet: !!process.env.SMTP_PASSWORD, nodeEnv: process.env.NODE_ENV || 'Not set' }, 'Email service config');
       
       this.transporter = await this.createTransporter();
       
       // Test the connection
       if (this.transporter) {
         await this.transporter.verify();
-        console.log('✅ Email service initialized and verified');
+  logger.info('Email service initialized and verified');
       }
     } catch (error) {
-      console.error('❌ Email service initialization failed:', error.message);
+  logger.error({ err: error }, 'Email service initialization failed');
       
       if (error.message.includes('Invalid login')) {
-        console.error('💡 Gmail users: Make sure to use App Password, not regular password');
-        console.error('💡 Enable 2FA and generate App Password: Google Account → Security → App passwords');
+  logger.warn('Gmail users: Make sure to use App Password, not regular password');
+  logger.warn('Enable 2FA and generate App Password: Google Account → Security → App passwords');
       }
     }
   }
@@ -228,11 +227,11 @@ class InvoiceEmailService {
 
       const result = await this.transporter.sendMail(mailOptions);
       
-      console.log(`✅ Invoice email sent to ${customerEmail}, MessageID: ${result.messageId}`);
+  logger.info({ email: customerEmail, messageId: result.messageId }, 'Invoice email sent');
       
       // For development with Ethereal, log preview URL
       if (process.env.NODE_ENV === 'development' && result.messageId) {
-        console.log(`📧 Preview URL: ${nodemailer.getTestMessageUrl(result)}`);
+        logger.info({ previewUrl: nodemailer.getTestMessageUrl(result) }, 'Email preview URL (dev)');
       }
 
       return {
@@ -243,7 +242,7 @@ class InvoiceEmailService {
       };
 
     } catch (error) {
-      console.error('Email sending failed:', error);
+      logger.error({ err: error }, 'Email sending failed');
       return {
         success: false,
         error: error.message,
@@ -352,7 +351,7 @@ class InvoiceNotificationService {
       }
     };    // Send WhatsApp notification - DISABLED FOR NOW
     if (sendWhatsApp && customerPhone) {
-      console.log(`📱 WhatsApp disabled: Skipping notification to ${customerPhone}...`);
+      logger.info({ phone: customerPhone }, 'WhatsApp disabled: skipping notification');
       results.whatsApp = {
         success: false,
         disabled: true,
@@ -360,8 +359,8 @@ class InvoiceNotificationService {
         phone: customerPhone
       };
       
-      results.summary.totalFailed++;
-      console.log('⚠️  WhatsApp notification skipped (service disabled)');
+  results.summary.totalFailed++;
+  logger.warn('WhatsApp notification skipped (service disabled)');
       
       /* ORIGINAL CODE - COMMENTED OUT
       console.log(`📱 Sending WhatsApp invoice to ${customerPhone}...`);
@@ -382,7 +381,7 @@ class InvoiceNotificationService {
 
     // Send Email notification
     if (sendEmail && customerEmail) {
-      console.log(`📧 Sending email invoice to ${customerEmail}...`);
+  logger.info({ email: customerEmail }, 'Sending email invoice');
       results.email = await this.emailService.sendInvoicePDF(
         customerEmail,
         invoiceData,
@@ -398,9 +397,9 @@ class InvoiceNotificationService {
     }
 
     // Log summary
-    console.log(`📊 Notification Summary: ${results.summary.totalSent} sent, ${results.summary.totalFailed} failed`);
+    logger.info({ summary: results.summary }, 'Notification summary');
     if (results.summary.channels.length > 0) {
-      console.log(`✅ Channels used: ${results.summary.channels.join(', ')}`);
+      logger.info({ channels: results.summary.channels }, 'Channels used');
     }
 
     return results;

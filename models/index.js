@@ -7,20 +7,24 @@ const connectDB = async () => {
       useUnifiedTopology: true,
     });
     
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    const logger = require('../utils/logger');
+    logger.info({ host: conn.connection.host }, 'MongoDB connected');
   } catch (error) {
-    console.error('Database connection error:', error.message);
+    const logger = require('../utils/logger');
+    logger.fatal({ err: error }, 'Database connection error');
     process.exit(1);
   }
 };
 
 // Handle connection events
 mongoose.connection.on('disconnected', () => {
-  console.log('MongoDB disconnected');
+  const logger = require('../utils/logger');
+  logger.warn('MongoDB disconnected');
 });
 
 mongoose.connection.on('error', (err) => {
-  console.error('MongoDB connection error:', err);
+  const logger = require('../utils/logger');
+  logger.error({ err }, 'MongoDB connection error');
 });
 
 // Central export file for all models

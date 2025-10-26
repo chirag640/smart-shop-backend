@@ -66,7 +66,8 @@ const sendErrorProd = (err, res) => {
     });
   } else {
     // Programming or other unknown error: don't leak error details
-    console.error('ERROR 💥', err);
+    const logger = require('../utils/logger');
+    logger.error({ err }, 'Unexpected error');
     
     res.status(500).json({
       success: false,
@@ -120,15 +121,15 @@ const catchAsync = (fn) => {
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err, promise) => {
-  console.log('UNHANDLED PROMISE REJECTION! 💥 Shutting down...');
-  console.log(err.name, err.message);
+  const logger = require('../utils/logger');
+  logger.fatal({ err }, 'UNHANDLED PROMISE REJECTION! Shutting down...');
   process.exit(1);
 });
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-  console.log('UNCAUGHT EXCEPTION! 💥 Shutting down...');
-  console.log(err.name, err.message);
+  const logger = require('../utils/logger');
+  logger.fatal({ err }, 'UNCAUGHT EXCEPTION! Shutting down...');
   process.exit(1);
 });
 
@@ -136,8 +137,9 @@ const errorHandler = (err, req, res, next) => {
   let error = { ...err };
   error.message = err.message;
 
-  // Log to console for dev
-  console.log(err);
+  // Log for dev/prod via structured logger
+  const logger = require('./logger') || require('../utils/logger');
+  logger.error({ err }, 'Error captured by error handler');
 
   // Mongoose bad ObjectId
   if (err.name === 'CastError') {

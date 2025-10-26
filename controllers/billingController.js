@@ -11,6 +11,7 @@ const Store = require('../models/Store');
 const { Parser } = require('json2csv');
 const ExcelJS = require('exceljs');
 const { logAudit } = require('../utils/auditLogService');
+const logger = require('../utils/logger');
 
 /**
  * Generate next invoice number
@@ -121,7 +122,7 @@ const recordSale = async (req, res) => {
         
         if (availableStore) {
           assignedStoreId = availableStore._id;
-          console.log(`Auto-assigned store ${assignedStoreId} for user ${req.user._id}`);
+          logger.info({ storeId: assignedStoreId, userId: req.user._id }, 'Auto-assigned store for user');
         }
       }
     }
@@ -295,19 +296,19 @@ const recordSale = async (req, res) => {
             sendEmail: sendEmail && finalCustomerEmail
           });
 
-          console.log(`📨 Email notification sent for invoice ${sale.invoiceNumber}:`, notificationResults.summary);
+          logger.info({ invoiceNumber: sale.invoiceNumber, summary: notificationResults.summary }, 'Email notification sent for invoice');
           
           // Log WhatsApp skip message if it was requested
           if (sendWhatsApp) {
-            console.log('⚠️  WhatsApp notification was requested but is currently disabled');
+            logger.warn('WhatsApp notification was requested but is currently disabled');
           }
           
         } catch (notificationError) {
-          console.error('Error sending notifications:', notificationError);
+          logger.error({ err: notificationError }, 'Error sending notifications');
           // Don't fail the sale if notifications fail
         }
       } else if (sendWhatsApp) {
-        console.log('⚠️  WhatsApp notification requested but service is currently disabled');
+        logger.warn('WhatsApp notification requested but service is currently disabled');
       }res.status(201).json({
         success: true,
         message: 'Sale recorded successfully',
@@ -367,7 +368,7 @@ const recordSale = async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error recording sale:', error);
+    logger.error({ err: error }, 'Error recording sale');
     res.status(500).json({
       success: false,
       message: 'Failed to record sale',
@@ -597,7 +598,7 @@ const getSalesStats = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching sales stats:', error);
+    logger.error({ err: error }, 'Error fetching sales stats');
     res.status(500).json({
       success: false,
       message: 'Failed to fetch sales statistics',
@@ -686,7 +687,7 @@ const getInvoices = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching invoices:', error);
+    logger.error({ err: error }, 'Error fetching invoices');
     res.status(500).json({
       success: false,
       message: 'Failed to fetch invoices',
@@ -721,7 +722,7 @@ const getInvoiceForPrint = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching invoice:', error);
+    logger.error({ err: error }, 'Error fetching invoice');
     res.status(500).json({
       success: false,
       message: 'Failed to fetch invoice',
@@ -765,7 +766,7 @@ const getInvoicePDF = async (req, res) => {
         website: storeDoc.contactInfo?.website,
         operatingHours: storeDoc.operatingHours
       };
-      console.log('PDF Store details:', store); // Debug print
+      logger.debug({ store }, 'PDF Store details'); // Debug print
     }
 
     // Create PDF document
@@ -779,7 +780,7 @@ const getInvoicePDF = async (req, res) => {
     doc.end();
 
   } catch (error) {
-    console.error('Error generating PDF:', error);
+    logger.error({ err: error }, 'Error generating PDF');
     res.status(500).json({
       success: false,
       message: 'Failed to generate PDF',
@@ -891,7 +892,7 @@ const getCustomerHistory = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching customer history:', error);
+    logger.error({ err: error }, 'Error fetching customer history');
     res.status(500).json({
       success: false,
       message: 'Failed to fetch customer history',
@@ -929,7 +930,7 @@ const getAvailableStores = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error fetching stores:', error);
+    logger.error({ err: error }, 'Error fetching stores');
     return res.status(500).json({
       success: false,
       message: 'Error fetching available stores',
@@ -1061,7 +1062,7 @@ const sendInvoiceNotifications = async (req, res) => {
     return res.status(200).json(response);
 
   } catch (error) {
-    console.error('Error sending invoice notifications:', error);
+    logger.error({ err: error }, 'Error sending invoice notifications');
     return res.status(500).json({
       success: false,
       message: 'Failed to send notifications',

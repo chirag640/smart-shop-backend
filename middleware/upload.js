@@ -125,12 +125,14 @@ const handleImageUpload = (req, res, next) => {
         format: 'jpg'
       };
       
-      console.log('📷 Mock image URL created for development:', req.file.path);
+        const logger = require('../utils/logger');
+        logger.debug({ path: req.file.path }, 'Mock image URL created for development');
     }
     
     // Log successful upload
     if (req.file) {
-      console.log(`📷 Image upload processed: ${req.file.originalname || 'Unknown'}`);
+      const logger = require('../utils/logger');
+      logger.info({ file: req.file.originalname || 'Unknown' }, 'Image upload processed');
     }
     
     next();
@@ -179,7 +181,8 @@ const handleMultipleImageUpload = (req, res, next) => {
         };
       });
       
-      console.log(`📷 ${req.files.length} mock image URLs created for development`);
+      const logger = require('../utils/logger');
+      logger.debug({ count: req.files.length }, 'Mock image URLs created for development');
     }
     
     next();

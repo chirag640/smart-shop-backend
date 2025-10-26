@@ -7,6 +7,9 @@ const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
 const connectDB = require('./config/database');
 const { applySecurity } = require('./middleware/security');
+const helmet = require('helmet');
+const hpp = require('hpp');
+const logger = require('./utils/logger');
 
 // Try to import errorHandler, use fallback if it doesn't exist
 let errorHandler;
@@ -21,8 +24,7 @@ try {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-  console.log('UNCAUGHT EXCEPTION! 💥 Shutting down...');
-  console.log(err.name, err.message);
+  logger.fatal({ err }, 'UNCAUGHT EXCEPTION! Shutting down...');
   process.exit(1);
 });
 
@@ -32,14 +34,29 @@ connectDB();
 const app = express();
 
 
-// Enable CORS for all routes and origins
+// Configure CORS with a whitelist from environment (CORS_ORIGINS)
+// Example: CORS_ORIGINS=https://app.example.com,https://admin.example.com
+const rawOrigins = process.env.CORS_ORIGINS || 'http://localhost:3000';
+const allowedOrigins = rawOrigins.split(',').map(o => o.trim()).filter(Boolean);
+
 app.use(cors({
-  origin: '*',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (e.g., curl, mobile apps, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
 }));
 
-// Apply comprehensive security middleware
+// Security headers and HTTP parameter pollution protection
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(hpp());
+
+// Apply additional app-level security (rate limiting, CSP, etc.)
 applySecurity(app);
 
 // Body parser middleware (with size limits)
@@ -109,12 +126,12 @@ app.use(errorHandler);
 // Start server
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  logger.info({ port: PORT, env: process.env.NODE_ENV }, 'Server running');
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err, promise) => {
-  console.log(`Error: ${err.message}`);
+  logger.error({ err }, 'Unhandled Rejection. Shutting down server.');
   server.close(() => {
     process.exit(1);
   });

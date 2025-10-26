@@ -4,14 +4,15 @@ const { OTP, OTPRateLimit } = require('../models');
 // Clean up expired OTPs
 const cleanupExpiredOTPs = async () => {
   try {
-    console.log('🧹 Starting OTP cleanup...');
+  const logger = require('./logger');
+  logger.info('Starting OTP cleanup');
     
     const [otpResult, rateLimitResult] = await Promise.all([
       OTP.cleanupExpired(),
       OTPRateLimit.cleanupExpired()
     ]);
     
-    console.log(`✅ OTP cleanup completed - Removed ${otpResult.deletedCount} expired OTPs and ${rateLimitResult.deletedCount} expired rate limits`);
+  logger.info({ deletedOTPs: otpResult.deletedCount, deletedRateLimits: rateLimitResult.deletedCount }, 'OTP cleanup completed');
     
     return {
       success: true,
@@ -19,7 +20,7 @@ const cleanupExpiredOTPs = async () => {
       deletedRateLimits: rateLimitResult.deletedCount
     };
   } catch (error) {
-    console.error('❌ OTP cleanup failed:', error);
+    logger.error({ err: error }, 'OTP cleanup failed');
     return {
       success: false,
       error: error.message
@@ -36,7 +37,7 @@ const scheduleOTPCleanup = () => {
     await cleanupExpiredOTPs();
   }, interval);
   
-  console.log('📅 OTP cleanup scheduled to run every hour');
+  logger.info('OTP cleanup scheduled to run every hour');
 };
 
 // Manual cleanup trigger

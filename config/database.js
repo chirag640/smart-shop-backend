@@ -7,9 +7,11 @@ const connectDB = async () => {
       useUnifiedTopology: true,
     });
 
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    const logger = require('../utils/logger');
+    logger.info({ host: conn.connection.host }, 'MongoDB connected');
   } catch (error) {
-    console.error('Database connection error:', error.message);
+    const logger = require('../utils/logger');
+    logger.fatal({ err: error }, 'Database connection error');
     process.exit(1);
   }
 };

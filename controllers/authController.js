@@ -46,7 +46,8 @@ const register = catchAsync(async (req, res, next) => {
   try {
     await sendOTPEmail(email, otpRecord.otp);
   } catch (emailError) {
-    console.error('Failed to send OTP email:', emailError);
+    const logger = require('../utils/logger');
+    logger.error({ err: emailError }, 'Failed to send OTP email');
     return next(new AppError('Failed to send verification email. Please try again.', 500));
   }
 
@@ -99,7 +100,8 @@ const verifyOTP = catchAsync(async (req, res, next) => {
         loginUrl: `${process.env.FRONTEND_URL}/login`
       });
     } catch (emailError) {
-      console.error('Failed to send welcome email:', emailError);
+      const logger = require('../utils/logger');
+      logger.error({ err: emailError }, 'Failed to send welcome email');
     }
 
     res.status(201).json({
@@ -252,7 +254,8 @@ const resendOTP = catchAsync(async (req, res, next) => {
     try {
       await sendOTPEmail(email, otpRecord.otp);
     } catch (emailError) {
-      console.error('Failed to send OTP email:', emailError);
+      const logger = require('../utils/logger');
+      logger.error({ err: emailError }, 'Failed to send OTP email');
       return next(new AppError('Failed to send verification email. Please try again.', 500));
     }
 

@@ -110,7 +110,8 @@ const customOTPLimiter = async (req, res, next) => {
     
     next();
   } catch (error) {
-    console.error('OTP rate limiter error:', error);
+    const logger = require('../utils/logger');
+    logger.error({ err: error }, 'OTP rate limiter error');
     // Allow request to proceed if rate limiter fails
     next();
   }

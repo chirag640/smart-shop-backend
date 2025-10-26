@@ -44,7 +44,8 @@ const uploadToCloudinary = async (filePath, options = {}) => {
       version: result.version
     };
   } catch (error) {
-    console.error('Cloudinary upload error:', error);
+    const logger = require('./logger');
+    logger.error({ err: error }, 'Cloudinary upload error');
     throw new Error(`Image upload failed: ${error.message}`);
   }
 };
@@ -60,7 +61,8 @@ const deleteFromCloudinary = async (publicId) => {
       resource_type: 'image'
     });
     
-    console.log(`🗑️ Cloudinary deletion result for ${publicId}:`, result.result);
+  const logger = require('./logger');
+  logger.info({ publicId, result: result.result }, 'Cloudinary deletion result');
     
     return {
       success: result.result === 'ok' || result.result === 'not found',
@@ -68,7 +70,8 @@ const deleteFromCloudinary = async (publicId) => {
       message: result.result === 'not found' ? 'Image already deleted' : 'Image deleted successfully'
     };
   } catch (error) {
-    console.error('Cloudinary delete error:', error);
+    const logger = require('./logger');
+    logger.error({ err: error }, 'Cloudinary delete error');
     // Don't throw error for deletion failures - log and continue
     return {
       success: false,
@@ -97,7 +100,8 @@ const getImageDetails = async (publicId) => {
       version: result.version
     };
   } catch (error) {
-    console.error('Cloudinary get details error:', error);
+    const logger = require('./logger');
+    logger.error({ err: error }, 'Cloudinary get details error');
     return {
       success: false,
       error: error.message
@@ -136,7 +140,8 @@ const extractPublicIdFromUrl = (cloudinaryUrl) => {
     
     return publicId || null;
   } catch (error) {
-    console.error('Error extracting public ID:', error);
+    const logger = require('./logger');
+    logger.error({ err: error }, 'Error extracting public ID');
     return null;
   }
 };
@@ -181,7 +186,8 @@ const generateImageVariants = (publicId) => {
       })
     };
   } catch (error) {
-    console.error('Error generating image variants:', error);
+    const logger = require('./logger');
+    logger.error({ err: error }, 'Error generating image variants');
     return {};
   }
 };
@@ -200,7 +206,8 @@ const generateOptimizedUrl = (publicId, options = {}) => {
     
     return cloudinary.url(publicId, defaultOptions);
   } catch (error) {
-    console.error('Error generating optimized URL:', error);
+    const logger = require('./logger');
+    logger.error({ err: error }, 'Error generating optimized URL');
     return null;
   }
 };
@@ -254,7 +261,8 @@ const handleImageUpload = async (file, itemType = 'other', existingPublicId = nu
     if (file) {
       const validation = validateImageFile(file);
       if (!validation.isValid) {
-        console.warn('Image validation failed:', validation.errors);
+        const logger = require('./logger');
+        logger.warn({ errors: validation.errors }, 'Image validation failed');
         return imageData; // Return default image data
       }
 
@@ -280,18 +288,20 @@ const handleImageUpload = async (file, itemType = 'other', existingPublicId = nu
               bytes: uploadResult.bytes
             }
           };
-          
-          console.log(`📷 Image uploaded successfully: ${uploadResult.url}`);
+          const logger = require('./logger');
+          logger.info({ url: uploadResult.url }, 'Image uploaded successfully');
         }
       } catch (uploadError) {
-        console.error('Image upload failed, using default:', uploadError);
+        const logger = require('./logger');
+        logger.error({ err: uploadError }, 'Image upload failed, using default');
         // Continue with default image
       }
     }
 
     return imageData;
   } catch (error) {
-    console.error('Error in handleImageUpload:', error);
+    const logger = require('./logger');
+    logger.error({ err: error }, 'Error in handleImageUpload');
     // Return default image data on any error
     return {
       imageUrl: getDefaultImageUrl(itemType),
@@ -306,16 +316,18 @@ const handleImageUpload = async (file, itemType = 'other', existingPublicId = nu
 const cleanupOrphanedImages = async () => {
   try {
     // This would be used for periodic cleanup of unused images
-    console.log('🧹 Starting orphaned image cleanup...');
+  const logger = require('./logger');
+  logger.info('Starting orphaned image cleanup');
     
     // Implementation would involve:
     // 1. Get all images in the smart-shop/inventory folder
     // 2. Compare with database records
     // 3. Delete images not referenced in database
     
-    console.log('✅ Orphaned image cleanup completed');
+    logger.info('Orphaned image cleanup completed');
   } catch (error) {
-    console.error('Orphaned image cleanup failed:', error);
+    const logger = require('./logger');
+    logger.error({ err: error }, 'Orphaned image cleanup failed');
   }
 };
 

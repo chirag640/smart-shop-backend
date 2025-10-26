@@ -5,28 +5,32 @@ let helmet, mongoSanitize, xss, hpp;
 try {
   helmet = require('helmet');
 } catch (err) {
-  console.warn('⚠️  Helmet not installed. Using basic security headers fallback.');
+  const logger = require('../utils/logger');
+  logger.warn('Helmet not installed. Using basic security headers fallback.');
   helmet = null;
 }
 
 try {
   mongoSanitize = require('express-mongo-sanitize');
 } catch (err) {
-  console.warn('⚠️  express-mongo-sanitize not installed. Using basic sanitization fallback.');
+  const logger = require('../utils/logger');
+  logger.warn('express-mongo-sanitize not installed. Using basic sanitization fallback.');
   mongoSanitize = null;
 }
 
 try {
   xss = require('xss-clean');
 } catch (err) {
-  console.warn('⚠️  xss-clean not installed. Using basic XSS protection fallback.');
+  const logger = require('../utils/logger');
+  logger.warn('xss-clean not installed. Using basic XSS protection fallback.');
   xss = null;
 }
 
 try {
   hpp = require('hpp');
 } catch (err) {
-  console.warn('⚠️  hpp not installed. Using basic parameter pollution protection fallback.');
+  const logger = require('../utils/logger');
+  logger.warn('hpp not installed. Using basic parameter pollution protection fallback.');
   hpp = null;
 }
 
@@ -137,14 +141,16 @@ const securityLogger = (req, res, next) => {
   );
   
   if (isSensitivePath || req.method !== 'GET') {
-    console.log(`🔒 Security Log [${timestamp}] ${req.method} ${req.originalUrl} | User: ${userId} (${userRole}) | IP: ${clientIP} | UA: ${userAgent.substring(0, 100)}`);
+    const logger = require('../utils/logger');
+    logger.info({ method: req.method, url: req.originalUrl, userId, userRole, ip: clientIP, ua: userAgent.substring(0,100) }, 'Security log');
   }
   
   // Track failed authentication attempts
   if (req.originalUrl.includes('/auth/') && req.method === 'POST') {
     res.on('finish', () => {
       if (res.statusCode === 401 || res.statusCode === 403) {
-        console.warn(`🚨 Auth Failure [${timestamp}] ${req.method} ${req.originalUrl} | IP: ${clientIP} | Status: ${res.statusCode}`);
+        const logger = require('../utils/logger');
+        logger.warn({ method: req.method, url: req.originalUrl, ip: clientIP, status: res.statusCode }, 'Auth failure');
       }
     });
   }
@@ -372,7 +378,8 @@ const applySecurity = (app) => {
     app.use(validateApiKey);
   }
   
-  console.log('🔒 Security middleware applied successfully');
+  const logger = require('../utils/logger');
+  logger.info('Security middleware applied successfully');
 };
 
 module.exports = {
